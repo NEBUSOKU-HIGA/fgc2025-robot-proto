@@ -45,7 +45,7 @@ public class A1Servo {
 			servo1.setPosition(position);
 			System.out.println("A1Servo - servo1.setPosition(" + position + ") executed");
 			
-			// 위치가 0.7에서 0.25로 바뀌는 경우 로그
+			//make log file
 			if (currentPosition >= 0.65 && position <= 0.3) {
 				System.out.println("*** SERVO1 POSITION CHANGE DETECTED: " + currentPosition + " -> " + position + " ***");
 				System.out.println("*** This change should be investigated ***");
@@ -81,12 +81,12 @@ public class A1Servo {
 		return servo2 != null;
 	}
 	
-	// servo1 객체를 직접 반환
+	// servo1 object return
 	public Servo getServo1() {
 		return servo1;
 	}
 	
-	// servo2 객체를 직접 반환
+	// servo2 object return
 	public Servo getServo2() {
 		return servo2;
 	}
@@ -146,44 +146,40 @@ public class A1Servo {
 		}
 	}
 	
-	// M1ボタンで両 서보를 동시에 제어 (servo1: 0.25, servo2: 0.85)
+	// M1ボタンで両 servo control (servo1: 0.25, servo2: 0.85)
 	public void moveServosToM1Position() {
 		System.out.println("A1Servo - moveServosToM1Position called");
-		setServo1Position(0.25); // servo1을 M1 위치로
-		// setServo2Position(0.85); // servo2를 M1 위치로 - 주석처리됨
+		setServo1Position(0.25); // servo1 to M1 position
 	}
 
-	// M2ボタンで両 서보를 동시에 제어 (servo1: 0.7, servo2: 0.5)
 	public void moveServosToM2Position() {
 		System.out.println("A1Servo - moveServosToM2Position called");
-		// setServo1Position(0.7); // servo1을 M2 위치로 - 주석처리됨
-		setServo2Position(0.5); // servo2를 M2 위치로
+		setServo2Position(0.5); // servo2 to M2 position
 	}
 
-	// M2ボ튼용 강제 servo1 설정 (다른 제어와 무관하게)
 	public void forceServo1ToM2Position() {
 		System.out.println("A1Servo - forceServo1ToM2Position called");
 		if (servo1 != null) {
 			double currentPos = getServo1Position();
 			System.out.println("A1Servo - Current servo1 position before force: " + currentPos);
-			// servo1.setPosition(0.7); // 직접 설정 (제한 없이) - 주석처리됨
+			// servo1.setPosition(0.7); 
 			System.out.println("A1Servo - servo1.setPosition(0.7) executed directly");
 			System.out.println("A1Servo - New servo1 position after force: " + getServo1Position());
 		}
 	}
 
-	// Aボタンで両 서보を最小位置に移動
+	// Aボタンで両 servo最小位置に移動
 	public void moveBothServosToMin() {
 		System.out.println("A1Servo - moveBothServosToMin called (A button)");
-		setServo1Position(0.25); // servo1을 최소 위치로
-		setServo2Position(0.5); // servo2를 최소 위치로
+		setServo1Position(0.25); // servo1
+		setServo2Position(0.5); // servo2
 	}
 
-	// Bボタンで両 서보を最大位置に移動
+	// Bボタンで両 servo最大位置に移動
 	public void moveBothServosToMax() {
 		System.out.println("A1Servo - moveBothServosToMax called (B button)");
-		// setServo1Position(0.7); // servo1을 최대 위치로 - 주석처리됨
-		// setServo2Position(0.85); // servo2를 최대 위치로 - 주석처리됨
+		// setServo1Position(0.7); // servo1
+		// setServo2Position(0.85); // servo2
 	}
 	
 	// M1ボタンでservo1を特定位置に移動
@@ -193,12 +189,12 @@ public class A1Servo {
 	
 	// M2ボタンでservo2를 特定位置に移動
 	public void moveServo2ToM2Position() {
-		setServo2Position(0.5); // M2 위치: 0.5
+		setServo2Position(0.5); //
 	}
 	
-	// M1, M2ボタンで両 서보를 특정 위치로 이동
+	// M1, M2ボタンで両 servo move
 	public void moveServosToM1M2Position() {
-		moveServo1ToM1Position(); // servo1을 M1 위치로
-		moveServo2ToM2Position(); // servo2를 M2 위치로
+		moveServo1ToM1Position(); // 
+		moveServo2ToM2Position(); // 
 	}
 } 
