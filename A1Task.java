@@ -15,96 +15,93 @@ import org.firstinspires.ftc.teamcode.A1Top2;
 import org.firstinspires.ftc.teamcode.A1Imu;
 import org.firstinspires.ftc.teamcode.A1ImuMotor;
 
-
 @TeleOp(name="A1Task", group="Test")
 public class A1Task extends LinearOpMode {
 
-	// A1システムのインスタンス
+	// A1 system instances
 	private A1ImuMotor imuMotorSystem;
-	private A1Flask flaskSystem = null; // Flaskはオプション
+	private A1Flask flaskSystem = null; // Flask is optional
 	private A1Arm armSystem;
 	private A1Lift liftSystem;
 	private A1Potension potensionSystem;
 	private A1Servo servoSystem;
 	private A1Top2 topSystem;
 	
-	// ボタンの状態管理（チャタリング防止）
+	// Button state (debounce)
 	private boolean lastShareButton = false;
 	private boolean lastOptionsButton = false;
 	
-	// △ボタン前進スピード制御用変数
-	private double triangleForwardSpeed = 0.3; // デフォルト前進スピード（0.0〜1.0）
-	private static final double TRIANGLE_SPEED_INCREMENT = 0.1; // スピード変更の増減値
+	// Triangle forward speed control
+	private double triangleForwardSpeed = 0.3; // Default forward speed (0.0–1.0)
+	private static final double TRIANGLE_SPEED_INCREMENT = 0.1; // Increment step
 	
-	// R1アーム位置制御用変数
-	private double r1ArmTargetHeight = 0.55; // デフォルトアーム目標高さ（0.0〜1.0）
-	private static final double R1_ARM_HEIGHT_INCREMENT = 0.05; // 高さ変更の増減値
+	// R1 arm position control
+	private double r1ArmTargetHeight = 0.55; // Default arm target height (0.0–1.0)
+	private static final double R1_ARM_HEIGHT_INCREMENT = 0.05; // Increment step
 	
-	// アーム自重補正用変数
-	private double armHoldPower = -0.15; // アーム自重を支えるリフトモーターパワー（デフォルト-0.15）
-	private static final double ARM_HOLD_POWER_INCREMENT = 0.02; // 保持パワー変更の増減値
+	// Arm gravity compensation (lift hold power)
+	private double armHoldPower = -0.15; // Lift motor power to hold arm (default -0.15)
+	private static final double ARM_HOLD_POWER_INCREMENT = 0.02; // Increment step
 	
-	// R2ボタン用リフト制御変数
-	private double r2LiftValue = -0.55; // R2ボタンでシミュレートするleft joystick Yの値（デフォルト-0.55）
-	private static final double R2_LIFT_VALUE_INCREMENT = 0.05; // 値変更の増減値
+	// R2-button lift control (simulate left-stick Y)
+	private double r2LiftValue = -0.55; // Default simulated left-stick Y for R2
+	private static final double R2_LIFT_VALUE_INCREMENT = 0.05; // Increment step
 	
-	// アーム位置保持制御用変数
-	private double armHoldMaxPower = -0.15; // アーム位置保持 최대 출력（デフォルト-0.15 = 15%）
-	private static final double ARM_HOLD_MAX_POWER_INCREMENT = 0.02; // 保持 최대 출력 변경の増減値
-	private static final double ARM_HOLD_MIN_HEIGHT = 0.34; // 位置保持 시작 높이（0.34）
-	private static final double ARM_HOLD_MAX_HEIGHT = 0.56; // 位置保持 최대 출력 높이（0.56）
+	// Nonlinear arm hold tuning
+	private double armHoldMaxPower = -0.15; // Max output for arm position hold (default -0.15 = 15%)
+	private static final double ARM_HOLD_MAX_POWER_INCREMENT = 0.02; // Increment step
+	private static final double ARM_HOLD_MIN_HEIGHT = 0.34; // Start hold at this height
+	private static final double ARM_HOLD_MAX_HEIGHT = 0.56; // Max hold output above this height
 	
-	// R2 servo 지연 제어용 변수
-	private long r2ServoTimer = 0; // R2 servo 지연 타이머
-	private boolean r2ServoTriggered = false; // R2 servo 트리거 상태
+	// R2 → delayed servo action
+	private long r2ServoTimer = 0; // R2 servo delay timer
+	private boolean r2ServoTriggered = false; // R2 servo trigger state
 	
-	// Servo1 위치 변경 추적용 변수
+	// Track Servo1 position changes
 	private double lastServo1Position = 0.0;
 	
 	/**
-	 * アーム位置保持制御：암의 자중에 의한 하강을 방지하는 위치 유지 제어（비선형 제어）
-	 * @param currentHeight 현재 암 높이 (normalized potentiometer value)
-	 * @return 위치 유지에 필요한 lift_motor 출력값
+	 * Arm position hold (nonlinear): prevents arm from sagging due to gravity by driving the lift.
+	 * @param currentHeight current normalized arm height (potentiometer)
+	 * @return lift_motor output required to hold position
 	 */
 	private double calculateArmHoldPower(double currentHeight) {
-		// 0.34 미만이면 위치 유지 불필요
+		// Below min height: no hold needed
 		if (currentHeight < ARM_HOLD_MIN_HEIGHT) {
 			return 0.0;
 		}
 		
-		// 0.56 이상이면 최대 출력
+		// Above max height: use max hold power
 		if (currentHeight >= ARM_HOLD_MAX_HEIGHT) {
 			return armHoldMaxPower;
 		}
 		
-		// 0.34 ~ 0.56 사이에서는 비선형 제어로 출력 계산
+		// Between min and max: nonlinear curve
 		double heightRatio = (currentHeight - ARM_HOLD_MIN_HEIGHT) / (ARM_HOLD_MAX_HEIGHT - ARM_HOLD_MIN_HEIGHT);
 		
-		// 비선형 곡선 적용 (0.42 근처에서 더 높은 출력을 위해)
-		// 제곱근 함수를 사용하여 낮은 높이에서도 더 높은 출력 제공
+		// Nonlinear curve: sqrt to give more power at lower heights
 		double nonLinearRatio = Math.sqrt(heightRatio);
 		
-		// 0.42 근처에서 추가 보정 (0.42는 약 0.36의 heightRatio에 해당)
+		// Extra bump near ~0.42 height to counterbalance geometry
 		double targetHeight = 0.42;
 		double targetRatio = (targetHeight - ARM_HOLD_MIN_HEIGHT) / (ARM_HOLD_MAX_HEIGHT - ARM_HOLD_MIN_HEIGHT);
 		
 		if (Math.abs(heightRatio - targetRatio) < 0.1) {
-			// 0.42 근처에서는 추가 30% 증가
+			// +30% in this band
 			nonLinearRatio *= 1.3;
 		}
 		
 		double holdPower = armHoldMaxPower * nonLinearRatio;
-		
 		return holdPower;
 	}
 	
 
 	@Override
 	public void runOpMode() {
-		// A1システムの初期化
+		// Initialize A1 subsystems
 		imuMotorSystem = new A1ImuMotor(hardwareMap);
 		
-		// Flaskの初期化（オプション）
+		// Initialize Flask (optional)
 		try {
 			flaskSystem = new A1Flask();
 			System.out.println("A1Task - Flask system initialized successfully");
@@ -120,13 +117,11 @@ public class A1Task extends LinearOpMode {
 		servoSystem = new A1Servo(hardwareMap);
 		topSystem = new A1Top2(hardwareMap);
 		
-
-		
-		// 初期化完了を待つ
+		// Wait for start
 		waitForStart();
 
 		while (opModeIsActive()) {
-			// ゲームパッド入力値を読み込み
+			// Read gamepad inputs
 			double leftStickX = gamepad1.left_stick_x;
 			double leftStickY = gamepad1.left_stick_y;
 			double rightStickX = gamepad1.right_stick_x;
@@ -148,21 +143,20 @@ public class A1Task extends LinearOpMode {
 			boolean dpadLeft = gamepad1.dpad_left;
 			boolean dpadRight = gamepad1.dpad_right;
 
-			// A1ImuMotorでIMUデータを更新し、ドライブ制御を実行
+			// Update IMU data and run drive control
 			imuMotorSystem.updateImuData();
 			
-			// 手動入力で自動整向をキャンセル
+			// Cancel auto heading if manual input exists
 			boolean hasManualInput = (Math.abs(rightStickY) > 0.1) || (Math.abs(rightStickX) > 0.15) || leftBumper || rightBumper;
 			imuMotorSystem.cancelAutoTurn(hasManualInput);
 			
-			// 自動整向の制御値を取得
+			// Get auto-turn control
 			double[] autoTurnControl = imuMotorSystem.calculateAutoTurnControl();
 			double autoTurnLeftPower = autoTurnControl[0];
 			double autoTurnRightPower = autoTurnControl[1];
 			
-			// 自動整向がアクティブな場合は自動整向の制御値を使用、そうでなければ通常のドライブ制御
+			// If auto-turn is active, use its control; else do manual drive
 			if (imuMotorSystem.isAutoTurnActive()) {
-				// 自動整向中は自動整向の制御値をモーターに設定
 				if (imuMotorSystem.isLeftMotorConnected()) {
 					imuMotorSystem.getLeftMotor().setPower(autoTurnLeftPower);
 				}
@@ -170,87 +164,84 @@ public class A1Task extends LinearOpMode {
 					imuMotorSystem.getRightMotor().setPower(autoTurnRightPower);
 				}
 			} else {
-				// A1Taskで直接ドライブ制御を実行
-				// 厳密なデッドゾーン設定
+				// Manual drive control in A1Task
+				
+				// Tight deadzones
 				if (Math.abs(rightStickY) < 0.05) rightStickY = 0.0;
 				if (Math.abs(rightStickX) < 0.05) rightStickX = 0.0;
 
 				double leftPower = 0.0;
 				double rightPower = 0.0;
 
-							// 前後移動制御（右スティックY軸を最優先、gamepad1とgamepad2の両方に対応）
-			if (Math.abs(rightStickY) >= 0.05) {
-				// gamepad1の右スティックY軸入力がある場合：最優先制御
-				leftPower = rightStickY;	// 左モーター（前進で正転）
-				rightPower = rightStickY;   // 右モーター（前進で正転）
-				
-				// 前進時にtop_motorを20%出力で駆動
-				if (rightStickY < 0) {
-					topSystem.moveTop(0.2, false);
-					System.out.println("A1Task - Forward detected, Top motor 20% power");
-				}
-			} else if (Math.abs(gamepad2.right_stick_y) >= 0.05) {
-				// gamepad1の右スティックY軸入力がない場合、gamepad2の右スティックY軸で制御
-				double gamepad2RightStickY = gamepad2.right_stick_y;
-				leftPower = gamepad2RightStickY;	// 左モーター（前進で正転）
-				rightPower = gamepad2RightStickY;   // 右モーター（前進で正転）
-				
-				// 前進時にtop_motorを20%出力で駆動
-				if (gamepad2RightStickY < 0) {
-					topSystem.moveTop(0.2, false);
-					System.out.println("A1Task - Gamepad2 Forward detected, Top motor 20% power");
-				}
-			} else {
-				// 両方のgamepadの右スティックY軸入力がない場合：L1ボタンで軽微な前進
-				if (gamepad2.left_bumper && !gamepad2.right_bumper) {
-					// L1ボタンが押された場合：前進制御速度調整
-					leftPower = -0.3;   // 左モーター（前進で正転）- 30%出力で調整
-					rightPower = -0.3;  // 右モーター（前進で正転）- 30%出力で調整
-					System.out.println("A1Task - L1 Button Forward Control: -0.3 (30% power)");
+				// Forward/back (right stick Y prioritized; supports gamepad1 & gamepad2)
+				if (Math.abs(rightStickY) >= 0.05) {
+					// gamepad1 right stick Y has priority
+					leftPower = rightStickY;	// left motor (forward = positive)
+					rightPower = rightStickY;   // right motor (forward = positive)
+					
+					// If moving forward, run top_motor at 20%
+					if (rightStickY < 0) {
+						topSystem.moveTop(0.2, false);
+						System.out.println("A1Task - Forward detected, Top motor 20% power");
+					}
+				} else if (Math.abs(gamepad2.right_stick_y) >= 0.05) {
+					// If no gamepad1 input, use gamepad2 right stick Y
+					double gamepad2RightStickY = gamepad2.right_stick_y;
+					leftPower = gamepad2RightStickY;
+					rightPower = gamepad2RightStickY;
+					
+					if (gamepad2RightStickY < 0) {
+						topSystem.moveTop(0.2, false);
+						System.out.println("A1Task - Gamepad2 Forward detected, Top motor 20% power");
+					}
 				} else {
-					// ロボットが停止している時：top_motorを停止
-					leftPower = 0.0;
-					rightPower = 0.0;
-					topSystem.moveTop(0.0, false);
-					System.out.println("A1Task - Robot stopped, Top motor stopped");
+					// If neither right stick Y is active: use gamepad2 L1 for gentle forward
+					if (gamepad2.left_bumper && !gamepad2.right_bumper) {
+						leftPower = -0.3;   // ~30% forward
+						rightPower = -0.3;
+						System.out.println("A1Task - L1 Button Forward Control: -0.3 (30% power)");
+					} else {
+						// Otherwise stop and stop top motor
+						leftPower = 0.0;
+						rightPower = 0.0;
+						topSystem.moveTop(0.0, false);
+						System.out.println("A1Task - Robot stopped, Top motor stopped");
+					}
 				}
-			}
 
-							// 左右回転制御（右スティックX軸、gamepad1とgamepad2の両方に対応）
-			if (Math.abs(rightStickX) >= 0.05) {
-				leftPower += -rightStickX;  // 左モーター（右回転で正転）- 符号反転
-				rightPower -= -rightStickX; // 右モーター（右回転で逆転）- 符号反転
-			} else if (Math.abs(gamepad2.right_stick_x) >= 0.05) {
-				// gamepad1の右スティックX軸入力がない場合、gamepad2の右スティックX軸で制御
-				double gamepad2RightStickX = gamepad2.right_stick_x;
-				leftPower += -gamepad2RightStickX;  // 左モーター（右回転で正転）- 符号反転
-				rightPower -= -gamepad2RightStickX; // 右モーター（右回転で逆転）- 符号反転
-			}
+				// Turn (right stick X; supports gamepad1 & gamepad2)
+				if (Math.abs(rightStickX) >= 0.05) {
+					leftPower += -rightStickX;  
+					rightPower -= -rightStickX; 
+				} else if (Math.abs(gamepad2.right_stick_x) >= 0.05) {
+					double gamepad2RightStickX = gamepad2.right_stick_x;
+					leftPower += -gamepad2RightStickX;
+					rightPower -= -gamepad2RightStickX;
+				}
 
-				// 左右回転制御（L1/R1ボタン）
+				// Turn (L1/R1)
 				if (leftBumper) {
-					leftPower += 0.5;   // 左回転（L1）- 左モーター正転
-					rightPower -= 0.5;  // 左回転（L1）- 右モーター逆転
+					leftPower += 0.5;   // turn left
+					rightPower -= 0.5;
 				}
 				if (rightBumper) {
-					leftPower -= 0.5;   // 右回転（R1）- 左モーター逆転
-					rightPower += 0.5;  // 右回転（R1）- 右モーター正転
+					leftPower -= 0.5;   // turn right
+					rightPower += 0.5;
 				}
 
-				// パワー値を-1.0から1.0の範囲に制限
+				// Clamp power
 				leftPower = Math.max(-1.0, Math.min(1.0, leftPower));
 				rightPower = Math.max(-1.0, Math.min(1.0, rightPower));
 
-							// 安全機能：入力がない場合は確実に0.0に設定（両方のgamepadの入力を考慮）
-			boolean hasGamepad1Input = (Math.abs(rightStickY) >= 0.05) || (Math.abs(rightStickX) >= 0.05) || leftBumper || rightBumper;
-			boolean hasGamepad2Input = (Math.abs(gamepad2.right_stick_y) >= 0.05) || (Math.abs(gamepad2.right_stick_x) >= 0.05);
-			
-			if (!hasGamepad1Input && !hasGamepad2Input) {
-				leftPower = 0.0;
-				rightPower = 0.0;
-			}
+				// Safety: if no input on either gamepad, force 0
+				boolean hasGamepad1Input = (Math.abs(rightStickY) >= 0.05) || (Math.abs(rightStickX) >= 0.05) || leftBumper || rightBumper;
+				boolean hasGamepad2Input = (Math.abs(gamepad2.right_stick_y) >= 0.05) || (Math.abs(gamepad2.right_stick_x) >= 0.05);
+				if (!hasGamepad1Input && !hasGamepad2Input) {
+					leftPower = 0.0;
+					rightPower = 0.0;
+				}
 
-				// モーターにパワーを設定
+				// Apply power
 				if (imuMotorSystem.isLeftMotorConnected()) {
 					imuMotorSystem.getLeftMotor().setPower(leftPower);
 				}
@@ -259,92 +250,74 @@ public class A1Task extends LinearOpMode {
 				}
 			}
 			
-			// A1Imuでヘディング記憶機能を更新（P1のSHAREボタン）
-			boolean sharePressed = gamepad1.back; // SHARE/BACKボタン
+			// Heading memory: gamepad1 SHARE/BACK
+			boolean sharePressed = gamepad1.back;
 			imuMotorSystem.updateHeadingMemory(sharePressed);
 			
-			// A1Imuで自動整向機能を更新（P1のOPTIONSボタン）
-			boolean optionsPressed = gamepad1.start; // OPTIONS/STARTボタン
+			// Auto-turn toggle: gamepad1 OPTIONS/START
+			boolean optionsPressed = gamepad1.start;
 			imuMotorSystem.startAutoTurn(optionsPressed);
 			
-			// R1アーム位置の調整（P1のL1/R1ボタンで調整）
+			// Adjust R1 arm target height with gamepad1 L1/R1
 			if (gamepad1.left_bumper && !lastShareButton) {
-				// L1ボタンでアーム位置減少
 				r1ArmTargetHeight = Math.max(0.0, r1ArmTargetHeight - R1_ARM_HEIGHT_INCREMENT);
 				System.out.println("A1Task - R1 Arm Target Height Decreased: " + r1ArmTargetHeight);
 			}
 			if (gamepad1.right_bumper && !lastOptionsButton) {
-				// R1ボタンでアーム位置増加
 				r1ArmTargetHeight = Math.min(1.0, r1ArmTargetHeight + R1_ARM_HEIGHT_INCREMENT);
 				System.out.println("A1Task - R1 Arm Target Height Increased: " + r1ArmTargetHeight);
 			}
 			lastShareButton = gamepad1.left_bumper;
 			lastOptionsButton = gamepad1.right_bumper;
 			
-			// アーム自重補正パワーの調整（P1のX/Yボタンで調整）
+			// Adjust arm gravity hold power with gamepad1 X/Y
 			if (gamepad1.x && !lastShareButton) {
-				// Xボタンで保持パワー減少
 				armHoldPower = Math.max(-0.5, armHoldPower - ARM_HOLD_POWER_INCREMENT);
 				System.out.println("A1Task - Arm Hold Power Decreased: " + armHoldPower);
 			}
 			if (gamepad1.y && !lastOptionsButton) {
-				// Yボタンで保持パワー増加
 				armHoldPower = Math.min(0.0, armHoldPower + ARM_HOLD_POWER_INCREMENT);
 				System.out.println("A1Task - Arm Hold Power Increased: " + armHoldPower);
 			}
 			lastShareButton = gamepad1.x;
 			lastOptionsButton = gamepad1.y;
 			
-			// アーム位置保持 최대出力の調整（P1のX/Yボタンで調整）
+			// Adjust arm hold max output with gamepad1 X/Y (same keys; keep as original behavior)
 			if (gamepad1.x && !lastShareButton) {
-				// Xボタンで保持 최대出力 감소
 				armHoldMaxPower = Math.max(-0.5, armHoldMaxPower - ARM_HOLD_MAX_POWER_INCREMENT);
 				System.out.println("A1Task - Arm Hold Max Power Decreased: " + armHoldMaxPower);
 			}
 			if (gamepad1.y && !lastOptionsButton) {
-				// Yボタンで保持 최대出力 증가
 				armHoldMaxPower = Math.min(0.0, armHoldMaxPower + ARM_HOLD_MAX_POWER_INCREMENT);
 				System.out.println("A1Task - Arm Hold Max Power Increased: " + armHoldMaxPower);
 			}
 			
-
-			
-
-			
-			// R1ボタンでアーム位置制御（ポテンションメーター0.55に設定しながらarm_motorをゆっくり回す）- 後進中は無効
+			// R1 (gamepad2 right bumper) auto arm positioning to target (disabled while driving backward)
 			if (gamepad2.right_bumper && (Math.abs(rightStickY) < 0.05 || rightStickY <= 0)) {
-				// 現在のポテンションメーター値を取得
 				double currentArmHeight = potensionSystem.getCurrentHeight();
-				
-				// 目標位置との差を計算
 				double heightError = r1ArmTargetHeight - currentArmHeight;
 				
-				// 比例制御でアームモーターを制御（ゆっくり）
-				double armControlPower = Math.max(-0.3, Math.min(0.3, heightError * 2.0)); // 制限付き比例制御
+				// Proportional control (clamped)
+				double armControlPower = Math.max(-0.3, Math.min(0.3, heightError * 2.0));
 				
-				// ポテンションメーターノーマライズの値に応じてarm_motorの出力を調整（전체적으로 20% 감소）
+				// Step-based final power with 20% reduction applied overall
 				double finalArmPower;
 				if (currentArmHeight >= 0.45) {
-					// ターゲット位置（0.55）に近い場合：50%の出力でしっかり動作（20% 감소 적용）
-					finalArmPower = 0.5 * 0.8; // 50%에서 20% 감소 = 40%
+					finalArmPower = 0.5 * 0.8; // 40%
 					System.out.println("A1Task - Near target position, using 40% power (20% reduced from 50%)");
 				} else if (currentArmHeight >= 0.35) {
-					// 中間位置の場合：30%の出力（20% 감소 적용）
-					finalArmPower = 0.3 * 0.8; // 30%에서 20% 감소 = 24%
+					finalArmPower = 0.3 * 0.8; // 24%
 					System.out.println("A1Task - Middle position, using 24% power (20% reduced from 30%)");
 				} else {
-					// 低い位置（0.28など）の場合：比例制御（ほぼ停止可能）（20% 감소 적용）
-					finalArmPower = armControlPower * 1.3 * 0.8; // 30%増加 후 20% 감소
-					finalArmPower = Math.max(-1.0, Math.min(1.0, finalArmPower)); // 範囲制限
+					finalArmPower = armControlPower * 1.3 * 0.8; // proportional *1.3 then -20%
+					finalArmPower = Math.max(-1.0, Math.min(1.0, finalArmPower));
 					System.out.println("A1Task - Low position, using proportional control (20% reduced)");
 				}
 				
-
-				
-				// アーム自重補正：リフトモーターに保持パワーを設定
+				// Gravity compensation on lift
 				liftSystem.moveLift(armHoldPower);
 				
-				// デバッグ情報
+				// Debug info
 				System.out.println("A1Task - R1 Button Pressed");
 				System.out.println("A1Task - Current Arm Height: " + currentArmHeight);
 				System.out.println("A1Task - Target Arm Height: " + r1ArmTargetHeight);
@@ -355,15 +328,12 @@ public class A1Task extends LinearOpMode {
 				telemetry.addData("R1 ARM CONTROL", "Target: " + r1ArmTargetHeight + ", Current: " + currentArmHeight + ", Original: " + armControlPower + ", Final: " + finalArmPower + ", Hold: " + armHoldPower);
 			}
 			
-			// R2ボタンでリフト制御（left stick Yの値をシミュレート）
+			// R2-button based lift control (simulate left-stick Y if left-stick idle)
 			if (gamepad2.right_bumper) {
-				// gamepad2のleft joystick Y入力がある場合はそれを優先
 				if (Math.abs(gamepad2.left_stick_y) > 0.1) {
-					// left joystick Y入力がある場合：その値で制御
 					double leftStickPower = potensionSystem.getAdjustedLiftPower(gamepad2.left_stick_y);
 					liftSystem.moveLift(leftStickPower);
 					
-					// デバッグ情報
 					System.out.println("A1Task - R2 Button + Left Stick Y Active");
 					System.out.println("A1Task - Left Stick Y Input: " + gamepad2.left_stick_y);
 					System.out.println("A1Task - Adjusted Power: " + leftStickPower);
@@ -371,19 +341,13 @@ public class A1Task extends LinearOpMode {
 					
 					telemetry.addData("R2 LIFT CONTROL", "Left Stick Y Priority: " + gamepad2.left_stick_y + ", Power: " + leftStickPower);
 				} else {
-					// left joystick Y入力がない場合：R2ボタンの固定値で制御
-					// left stick Yにr2LiftValueが入ってきたかのように制御
-					// 段階的制限を適用したパワーを取得（r2LiftValueをleft stick Yとして渡す）
+					// Use fixed simulated value (r2LiftValue), then boost torque by 20%
 					double r2LiftPower = potensionSystem.getAdjustedLiftPower(r2LiftValue);
-					
-					// トルクを20%上げる（1.2倍）
 					double boostedPower = r2LiftPower * 1.2;
-					// パワーの範囲を-1.0〜1.0に制限
 					boostedPower = Math.max(-1.0, Math.min(1.0, boostedPower));
 					
 					liftSystem.moveLift(boostedPower);
 					
-					// デバッグ情報
 					System.out.println("A1Task - R2 Button Pressed (Fixed Value)");
 					System.out.println("A1Task - Simulated Left Stick Y: " + r2LiftValue);
 					System.out.println("A1Task - Original Adjusted Power: " + r2LiftPower);
@@ -394,24 +358,24 @@ public class A1Task extends LinearOpMode {
 				}
 			}
 			
-			// サーボモーター制御（D-pad）- gamepad2に移植
-			// Triangle 버튼 제어 제거됨 - top_motor와 servo는 독립적으로 제어
+			// Servo control (D-pad) — moved to gamepad2
+			// Triangle-button servo control removed — top motor and servos are independent
 			servoSystem.controlServosWithDpad(gamepad2.dpad_left, gamepad2.dpad_right, gamepad2.dpad_up, gamepad2.dpad_down);
 			
-			// サーボモーター制御（ボタン）- gamepad2に移植
-			// Triangle 버튼 제어 제거됨 - top_motor와 servo는 독립적으로 제어
+			// Servo control (buttons) — moved to gamepad2
+			// Triangle-button control removed — top motor and servos are independent
 			if (gamepad2.a) {
 				System.out.println("A1Task - A button pressed");
-				servoSystem.moveBothServosToMin(); // Aボタンで最小位置
+				servoSystem.moveBothServosToMin(); // A → set to min positions
 			}
 			if (gamepad2.b) {
 				System.out.println("A1Task - B button pressed");
-				servoSystem.moveBothServosToMax(); // Bボタンで最大位置
+				servoSystem.moveBothServosToMax(); // B → set to max positions
 			}
 			
-			// Triangle 버튼 servo 제어 제거됨 - top_motor와 servo는 독립적으로 제어
+			// Triangle-button servo control removed — top motor and servos are independent
 			
-			// 버튼 매핑 디버깅을 위한 추가 로그
+			// Extra mapping logs for debugging
 			if (gamepad2.square) {
 				System.out.println("A1Task - Square button detected: " + gamepad2.square);
 			}
@@ -419,8 +383,8 @@ public class A1Task extends LinearOpMode {
 				System.out.println("A1Task - Circle button detected: " + gamepad2.circle);
 			}
 			
-			// gamepad2 Share 버튼 (back)과 Options 버튼 (start)으로 servo 제어
-			if (gamepad2.back) { // Share 버튼
+			// Servo presets via gamepad2 Share (back) and Options (start)
+			if (gamepad2.back) { // Share button
 				System.out.println("A1Task - Share Button Pressed: Setting servo1 to 0.25, servo2 to 0.85");
 				if (servoSystem.isServo1Connected()) {
 					servoSystem.getServo1().setPosition(0.25);
@@ -428,7 +392,7 @@ public class A1Task extends LinearOpMode {
 				}
 				servoSystem.setServo2Position(0.85);
 				System.out.println("A1Task - Share Button: Servo1(0.25) + Servo2(0.85)");
-			} else if (gamepad2.start) { // Options 버튼
+			} else if (gamepad2.start) { // Options button
 				System.out.println("A1Task - Options Button Pressed: Setting servo1 to 0.7, servo2 to 0.5");
 				if (servoSystem.isServo1Connected()) {
 					servoSystem.getServo1().setPosition(0.7);
@@ -438,86 +402,77 @@ public class A1Task extends LinearOpMode {
 				System.out.println("A1Task - Options Button: Servo1(0.7) + Servo2(0.5)");
 			}
 			
-			// A1Top2にトップモーター制御を委譲（R2トリガーでM1コンボ機能付き、△ボタンで逆回転）
+			// Top motor control via A1Top2 (R2 trigger with M1 combo; Triangle = reverse)
 			if (gamepad2.right_trigger > 0.05) {
-				// R2トリガーが押されている場合
 				if (gamepad2.triangle) {
-					// R2トリガー + △ボタンが同時に押された場合：逆回転
+					// Reverse rotation when Triangle held with R2
 					topSystem.moveTopWithM1ComboReverse(gamepad2.right_trigger);
 					System.out.println("A1Task - R2 + Triangle: Top motor reverse rotation with power: " + gamepad2.right_trigger);
 				} else {
-					// R2トリガーのみ：通常回転
+					// Normal rotation
 					topSystem.moveTopWithM1Combo(gamepad2.right_trigger);
 					System.out.println("A1Task - R2 only: Top motor normal rotation with power: " + gamepad2.right_trigger);
 				}
 				
-				// servo遅延制御開始
+				// Start delayed servo action
 				if (!r2ServoTriggered) {
 					r2ServoTimer = System.currentTimeMillis();
 					r2ServoTriggered = true;
 				}
 				
-				// 3秒後にservo位置設定（servo1: 0.7, servo2: 0.5）
+				// After 3 seconds on R2, set servos (servo1: 0.7, servo2: 0.5) if Triangle not pressed
 				if (r2ServoTriggered && (System.currentTimeMillis() - r2ServoTimer) >= 3000) {
-					// Triangleボタンが押されていない 경우にのみR2 servo制御実行
 					System.out.println("A1Task - R2 3-second delay completed, setting servos");
 					servoSystem.setServo1Position(0.7);
 					servoSystem.setServo2Position(0.5);
-					r2ServoTriggered = false; // 一度だけ実行
+					r2ServoTriggered = false; // run once
 				}
 			} else {
-				// R2が押されていない場合：top_motor即座に停止
+				// If R2 not pressed: stop top motor immediately (when not actively reversing)
 				if (Math.abs(rightStickY) < 0.05 || rightStickY >= 0) {
 					topSystem.moveTopWithM1Combo(0.0);
 				}
-				// servoタイマーリセット
+				// Reset servo delay timer
 				r2ServoTriggered = false;
 			}
 			
-			// デバッグ情報
+			// Debug
 			System.out.println("A1Task - Gamepad2 R2 Trigger: " + gamepad2.right_trigger);
 			System.out.println("A1Task - Gamepad2 Triangle Button: " + gamepad2.triangle);
 			System.out.println("A1Task - Top Motor Power: " + topSystem.getTopMotorPower());
 			System.out.println("A1Task - Top Motor Connected: " + topSystem.isTopMotorConnected());
 			
-
-			
-			// A1ImuでIMUデータを更新
-			// imuMotorSystem.updateImuData(); // この行は削除
-			
-			// アームモーター制御（simple5MotorTest方式）- gamepad2の■ボタン
+			// Arm motor direct control (simple5MotorTest style) — gamepad2 square
 			if (armSystem.isArmMotorConnected()) {
 				double armPower = 0.0;
 				
-				// ■ボタンが押されている場合：100%出力
+				// Square → 100% power
 				if (gamepad2.square) {
 					armPower = 1.0;
 				}
 				
-				// 直接arm_motorにパワーを設定（simple5MotorTest方式）
 				armSystem.getArmMotor().setPower(armPower);
 				System.out.println("A1Task - Arm Motor Power: " + armPower + " (Simple5MotorTest Style)");
 			}
 			
-			// === 통합된 ARM MOTOR 제어 로직 ===
-			double finalArmPower = 0.0; // 최종 arm_motor 출력값
-			String armControlSource = "None"; // 제어 소스 표시
+			// === Unified ARM MOTOR control logic ===
+			double finalArmPower = 0.0; // final arm motor power
+			String armControlSource = "None"; // source tag
 			
-			// 1. L2 트리거 제어 (최우선)
+			// 1) L2 trigger (highest priority)
 			if (gamepad2.left_trigger > 0.05) {
-				finalArmPower = 1.0; // 100% 출력
+				finalArmPower = 1.0; // 100%
 				armControlSource = "L2 Trigger (100%)";
 				System.out.println("A1Task - L2 Trigger: Arm motor 100% power");
 			}
-			// 2. Square 버튼 제어 (2순위)
+			// 2) Square (2nd)
 			else if (gamepad2.square) {
 				finalArmPower = 0.442; // 0.340 * 1.3
 				armControlSource = "Square Button (44.2%)";
 				System.out.println("A1Task - Square Button: Arm motor 44.2% power");
 			}
-			// 3. R1 버튼 제어 (3순위)
+			// 3) R1 (auto position; 3rd)
 			else if (gamepad2.right_bumper && (Math.abs(rightStickY) < 0.05 || rightStickY <= 0)) {
-				// 현재의 포텐셔미터 값에 따른 비례 제어
 				double currentArmHeight = potensionSystem.getCurrentHeight();
 				double heightError = r1ArmTargetHeight - currentArmHeight;
 				double armControlPower = Math.max(-0.3, Math.min(0.3, heightError * 2.0));
@@ -533,60 +488,54 @@ public class A1Task extends LinearOpMode {
 				armControlSource = "R1 Button (Auto Position)";
 				System.out.println("A1Task - R1 Button: Arm motor " + finalArmPower + " power");
 			}
-			// 4. 후진 제어 (4순위)
+			// 4) Backward drive present (4th)
 			else if (rightStickY > 0 || gamepad2.right_stick_y > 0) {
-				finalArmPower = 0.4; // 40% 출력
+				finalArmPower = 0.4; // 40%
 				armControlSource = "Backward Control (40%)";
 				System.out.println("A1Task - Backward: Arm motor 40% power");
 			}
 			
-			// 최종 arm_motor 출력 설정
+			// Apply final arm motor power
 			if (armSystem.isArmMotorConnected()) {
 				armSystem.getArmMotor().setPower(finalArmPower);
 			}
 			
-			// 디버그 정보
+			// Debug
 			System.out.println("A1Task - Final Arm Power: " + finalArmPower + " (" + armControlSource + ")");
 			System.out.println("A1Task - Arm Motor Connected: " + armSystem.isArmMotorConnected());
 			System.out.println("A1Task - Arm Motor Power: " + armSystem.getArmMotorPower());
 			
-			// A1Liftにリフト制御を委譲（gamepad2のleft stick）
+			// Lift control via A1Lift (gamepad2 left stick)
 			double currentHeight = potensionSystem.getCurrentHeight();
-			
-			// 段階的制限を適用したパワーを取得（gamepad2のleft stick Y軸）
 			double adjustedLiftPower = potensionSystem.getAdjustedLiftPower(gamepad2.left_stick_y);
 			
-			// L1前進スピードの調整（P1のL1/R1ボタンで調整）
+			// Adjust L1 forward speed (gamepad1 L1/R1)
 			if (gamepad1.left_bumper && !lastShareButton) {
-				// L1ボタンでスピード減少
 				triangleForwardSpeed = Math.max(0.0, triangleForwardSpeed - TRIANGLE_SPEED_INCREMENT);
 				System.out.println("A1Task - L1 Forward Speed Decreased: " + triangleForwardSpeed);
 			}
 			if (gamepad1.right_bumper && !lastOptionsButton) {
-				// R1ボタンでスピード増加
 				triangleForwardSpeed = Math.min(1.0, triangleForwardSpeed + TRIANGLE_SPEED_INCREMENT);
 				System.out.println("A1Task - L1 Forward Speed Increased: " + triangleForwardSpeed);
 			}
 			lastShareButton = gamepad1.left_bumper;
 			lastOptionsButton = gamepad1.right_bumper;
 			
-			// gamepad2のL1ボタン制御（lift_motor는 gamepad1 joystick과 무관하게 작동）
+			// gamepad2 L1 combo (lift runs regardless of gamepad1 joystick)
 			if (gamepad2.left_bumper && !gamepad2.right_bumper) {
-				// L1ボタン이 눌린 경우：lift_motor 제어（gamepad1 joystick과 무관）
 				double l1LiftPower = potensionSystem.getAdjustedLiftPower(-0.800);
 				liftSystem.moveLift(l1LiftPower);
 				
-				// サーボモーターを指定位置に設定（servo1: 0.7, servo2: 0.5）
+				// Set servos to preset positions (servo1: 0.7, servo2: 0.5)
 				System.out.println("A1Task - L1 button pressed, setting servos");
 				servoSystem.setServo1Position(0.7);
 				servoSystem.setServo2Position(0.5);
-				// サーボモーターの動作を少し待つ
-				sleep(100); // 100ms待機
+				sleep(100); // brief delay for servos
 				
-				// top_motorを動かす（M1コンボ機能）- gamepad1 joystick과 무관
+				// Run top motor M1 combo (independent of gamepad1)
 				topSystem.moveTopM1Combo();
 				
-				// デバッグ情報
+				// Debug
 				System.out.println("A1Task - L1 Button Pressed (Lift+Top+Servo Control)");
 				System.out.println("A1Task - Top Motor Power: " + topSystem.getTopMotorPower());
 				System.out.println("A1Task - Top Motor Connected: " + topSystem.isTopMotorConnected());
@@ -594,26 +543,19 @@ public class A1Task extends LinearOpMode {
 				
 				telemetry.addData("LIFT+TOP COMBO", "L1 Button - Lift: -0.800 (Adjusted: " + l1LiftPower + "), Top: -1.0");
 			} else if (!gamepad2.right_bumper) {
-				// L1ボタンが押されていない場合：通常の制御（段階的制限を適用）
-				// R2ボタンが押されている場合は通常制御をスキップ
-				
-				// gamepad2의 left joystick Y 입력이 있는 경우：일반 제어
+				// Normal lift control if L1 not pressed and R2 logic not overriding
 				if (Math.abs(gamepad2.left_stick_y) > 0.1) {
 					liftSystem.moveLift(adjustedLiftPower);
 					System.out.println("A1Task - Normal Lift Control: " + adjustedLiftPower);
 				} else {
-					// gamepad2의 left joystick Y 입력이 없는 경우：암 위치 유지 제어
+					// If stick idle: hold arm position via lift
 					double holdPower = calculateArmHoldPower(currentHeight);
 					liftSystem.moveLift(holdPower);
 					System.out.println("A1Task - Arm Position Hold Control: Height=" + currentHeight + ", HoldPower=" + holdPower);
 				}
 			}
 			
-
-			
-			// Flask機能は無効化（ロボットとFlaskを分離）
-
-			// テレメトリ表示
+			// Flask telemetry (if available)
 			telemetry.addData("=== GAMEPAD INPUT VALUES ===", "");
 			telemetry.addData("Left Stick X", "%.3f", leftStickX);
 			telemetry.addData("Left Stick Y", "%.3f", leftStickY);
@@ -636,7 +578,7 @@ public class A1Task extends LinearOpMode {
 			telemetry.addData("D-pad Left", dpadLeft ? "PRESSED" : "Released");
 			telemetry.addData("D-pad Right", dpadRight ? "PRESSED" : "Released");
 			
-			// Gamepad2の入力値も表示
+			// Gamepad2 inputs
 			telemetry.addData("=== GAMEPAD2 INPUT VALUES ===", "");
 			telemetry.addData("Gamepad2 Left Stick X", "%.3f", gamepad2.left_stick_x);
 			telemetry.addData("Gamepad2 Left Stick Y", "%.3f", gamepad2.left_stick_y);
@@ -670,7 +612,6 @@ public class A1Task extends LinearOpMode {
 			telemetry.addData("Left Motor Connected", imuMotorSystem.isLeftMotorConnected());
 			telemetry.addData("Right Motor Connected", imuMotorSystem.isRightMotorConnected());
 			
-			// 入力がない場合の確認
 			boolean noInput = (Math.abs(rightStickY) < 0.05) && (Math.abs(rightStickX) < 0.05) && !leftBumper && !rightBumper;
 			telemetry.addData("No Input Detected", noInput ? "YES - Motors should be stopped" : "NO - Input detected");
 			
@@ -699,7 +640,7 @@ public class A1Task extends LinearOpMode {
 			telemetry.addData("R2 + Triangle Combo", (gamepad2.right_trigger > 0.05 && gamepad2.triangle) ? "ACTIVE - Reverse" : "Inactive");
 			telemetry.addData("Top Rotation Direction", (gamepad2.right_trigger > 0.05 && gamepad2.triangle) ? "REVERSE" : (gamepad2.right_trigger > 0.05 ? "NORMAL" : "STOPPED"));
 			
-			// IMUデータ表示
+			// IMU telemetry
 			telemetry.addData("=== IMU DATA ===", "");
 			if (imuMotorSystem.isInitialized()) {
 				telemetry.addData("IMU Status", "Connected");
@@ -709,7 +650,7 @@ public class A1Task extends LinearOpMode {
 				telemetry.addData("Heading", "%.2f°", imuMotorSystem.getHeading());
 				telemetry.addData("Angular Velocity Z", "%.2f°/s", imuMotorSystem.getAngularVelocityZ());
 				
-				// ヘディング記憶情報を表示
+				// Stored heading display
 				if (imuMotorSystem.hasStoredHeading()) {
 					telemetry.addData("Stored Heading", "%.2f° (%s)", imuMotorSystem.getStoredHeading(), 
 						imuMotorSystem.getHeadingDirection(imuMotorSystem.getStoredHeading()));
@@ -717,11 +658,11 @@ public class A1Task extends LinearOpMode {
 					telemetry.addData("Stored Heading", "NONE - Press SHARE/BACK to store");
 				}
 				
-				// 現在のヘディング方向を表示
+				// Current heading direction
 				telemetry.addData("Current Direction", "%s (%.2f°)", 
 					imuMotorSystem.getHeadingDirection(imuMotorSystem.getYaw()), imuMotorSystem.getYaw());
 				
-				// 自動整向の状態を表示
+				// Auto-turn status
 				telemetry.addData("Auto Turn Active", imuMotorSystem.isAutoTurnActive() ? "YES" : "NO");
 				telemetry.addData("Heading Locked", imuMotorSystem.isHeadingLocked() ? "YES" : "NO");
 				if (imuMotorSystem.isAutoTurnActive()) {
@@ -765,7 +706,7 @@ public class A1Task extends LinearOpMode {
 			telemetry.addData("Servo Button Control (Gamepad2)", "A=Servo1(0.250)+Servo2(0.500), B=Servo1(0.700)+Servo2(0.850)");
 			telemetry.addData("Servo Triangle Control (Gamepad2)", "Triangle=Servo1(0.700)+Servo2(0.500)");
 			
-			// Flaskステータス表示（Flaskが利用可能な場合のみ）
+			// Flask status (if available)
 			if (flaskSystem != null) {
 				telemetry.addData("=== FLASK STATUS ===", "");
 				telemetry.addData("Send Count", flaskSystem.getSendCount());
@@ -782,7 +723,7 @@ public class A1Task extends LinearOpMode {
 			telemetry.addData("Update Rate", "20 Hz (50ms)");
 			telemetry.addData("Status", "Running");
 			
-			// Servo1 위치 변경 추적
+			// Servo1 position change tracking
 			double currentServo1Position = servoSystem.getServo1Position();
 			if (Math.abs(currentServo1Position - lastServo1Position) > 0.01) {
 				telemetry.addData("*** SERVO1 POSITION CHANGE ***", "%.3f -> %.3f", lastServo1Position, currentServo1Position);
@@ -792,11 +733,11 @@ public class A1Task extends LinearOpMode {
 				telemetry.addData("Servo1 Position Stable", "%.3f", currentServo1Position);
 			}
 			
-			// M2 버튼 상태 표시
+			// Button states for top motor mapping
 			telemetry.addData("Square Button Status", gamepad2.square ? "PRESSED - Top Motor Forward" : "Released");
 			telemetry.addData("Circle Button Status", gamepad2.circle ? "PRESSED - Top Motor Reverse" : "Released");
 			
-			// 현재 servo 제어 상태 표시
+			// Current servo control state
 			if (gamepad2.square) {
 				telemetry.addData("*** SQUARE ACTIVE ***", "Top Motor Forward");
 			} else if (gamepad2.circle) {
@@ -807,12 +748,10 @@ public class A1Task extends LinearOpMode {
 			
 			// === SERVO1 POSITION TRACKING ===
 			telemetry.addData("=== SERVO1 POSITION TRACKING ===", "");
-			
-			// 현재 servo1 위치
 			telemetry.addData("Current Servo1 Position", "%.3f", currentServo1Position);
 			telemetry.addData("Last Servo1 Position", "%.3f", lastServo1Position);
 			
-			// 위치 변경 감지
+			// Change detection
 			if (Math.abs(currentServo1Position - lastServo1Position) > 0.01) {
 				telemetry.addData("*** POSITION CHANGED ***", "YES");
 				telemetry.addData("Change Amount", "%.3f", currentServo1Position - lastServo1Position);
@@ -820,7 +759,7 @@ public class A1Task extends LinearOpMode {
 				telemetry.addData("*** POSITION CHANGED ***", "NO");
 			}
 			
-			// 버튼 상태 상세 정보
+			// Detailed button state
 			telemetry.addData("Gamepad2 Square (Top Forward)", gamepad2.square ? "PRESSED" : "Released");
 			telemetry.addData("Gamepad2 Circle (Top Reverse)", gamepad2.circle ? "PRESSED" : "Released");
 			telemetry.addData("Gamepad2 A", gamepad2.a ? "PRESSED" : "Released");
@@ -832,7 +771,7 @@ public class A1Task extends LinearOpMode {
 			telemetry.addData("Gamepad2 R2 Trigger", "%.3f", gamepad2.right_trigger);
 			telemetry.addData("Gamepad2 L1 Bumper", gamepad2.left_bumper ? "PRESSED" : "Released");
 			
-			// 버튼 상태 디버깅
+			// Button debug
 			telemetry.addData("=== BUTTON DEBUG ===", "");
 			telemetry.addData("Square (Top Forward) Raw Value", gamepad2.square);
 			telemetry.addData("Circle (Top Reverse) Raw Value", gamepad2.circle);
@@ -843,7 +782,7 @@ public class A1Task extends LinearOpMode {
 			telemetry.addData("Both Square and Circle Pressed", (gamepad2.square && gamepad2.circle) ? "YES" : "NO");
 			telemetry.addData("Neither Square nor Circle Pressed", (!gamepad2.square && !gamepad2.circle) ? "YES" : "NO");
 			
-			// 버튼 매핑 확인
+			// Button mapping check
 			telemetry.addData("=== BUTTON MAPPING CHECK ===", "");
 			if (gamepad2.square) telemetry.addData("Square (Top Forward) Detected", "YES");
 			if (gamepad2.circle) telemetry.addData("Circle (Top Reverse) Detected", "YES");
@@ -852,7 +791,7 @@ public class A1Task extends LinearOpMode {
 			if (gamepad2.a) telemetry.addData("A Button Detected", "YES");
 			if (gamepad2.b) telemetry.addData("B Button Detected", "YES");
 			
-			// 제어 우선순위 상태
+			// Control priority status
 			if (gamepad2.square) {
 				telemetry.addData("*** SQUARE PRIORITY ***", "ACTIVE - Top Motor Forward");
 				telemetry.addData("Square Override Status", "Top motor forward 100% power");
@@ -867,7 +806,7 @@ public class A1Task extends LinearOpMode {
 				telemetry.addData("L1 Servo Control", "Enabled");
 			}
 			
-			// 예상 servo1 위치 (수정된 버전)
+			// Expected servo1 position (updated)
 			if (gamepad2.back) {
 				telemetry.addData("Expected Servo1 Position", "0.250 (Share Button)");
 			} else if (gamepad2.start) {
@@ -888,13 +827,13 @@ public class A1Task extends LinearOpMode {
 				telemetry.addData("Expected Servo1 Position", "No change expected");
 			}
 			
-			// 위치 불일치 감지 (Circle 버튼은 이제 servo 제어 안함)
+			// Position mismatch note (Circle no longer controls servos)
 			telemetry.addData("Position Match", "OK - Circle button no longer controls servos");
 			
 			telemetry.update();
 			
-			// 50ms待機
+			// 50ms loop delay
 			sleep(50);
 		}
 	}
-} 
+}
