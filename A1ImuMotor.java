@@ -14,7 +14,7 @@ public class A1ImuMotor {
 	private DcMotorEx rightMotor;
 	private boolean isInitialized = false;
 	
-	// IMUデータ
+	// IMUデータ data
 	private double yaw = 0.0;
 	private double pitch = 0.0;
 	private double roll = 0.0;
