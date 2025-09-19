@@ -6,7 +6,7 @@ import com.qualcomm.robotcore.hardware.AnalogInput;
 
 public class A1Lift {
 	
-	// リフト用モーター
+	// リフト用モーター lift motor
 	private DcMotor liftMotor;
 	
 	// ポテンショメーター制御用変数
