@@ -327,7 +327,7 @@ public class A1debug extends LinearOpMode {
 				
 				// 前進時にtop_motorを drive
 				if (rightStickY < 0) {
-					double topMotorPower = Math.abs(rightStickY) * 1.2; // 속도의 120%로 top_motor 구동 (50% 더 빠르게)
+					double topMotorPower = Math.abs(rightStickY) * 1.2; 
 					System.out.println("A1Task - Gamepad1 Input: " + rightStickY + ", Top motor power: " + topMotorPower);
 					
 					// top_motor control
