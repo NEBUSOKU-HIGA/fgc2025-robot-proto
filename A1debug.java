@@ -49,61 +49,53 @@ public class A1debug extends LinearOpMode {
 	private static final double R2_LIFT_VALUE_INCREMENT = 0.05; // 値変更の増減値
 	
 	// アーム位置保持制御用変数
-	private double armHoldMaxPower = -0.15; // アーム位置保持 최대 출력（デフォルト-0.15 = 15%）
-	private static final double ARM_HOLD_MAX_POWER_INCREMENT = 0.02; // 保持 최대 출력 변경の増減値
-	private static final double ARM_HOLD_MIN_HEIGHT = 0.34; // 位置保持 시작 높이（0.34）
-	private static final double ARM_HOLD_MAX_HEIGHT = 0.56; // 位置保持 최대 출력 높이（0.56）
-	
-	// R2 servo 지연 제어는 제거됨 (top_motor와 servo 독립 제어)
+	private double armHoldMaxPower = -0.15; // アーム位置保持 max output（デフォルト-0.15 = 15%）
+	private static final double ARM_HOLD_MAX_POWER_INCREMENT = 0.02; // 保持 max output changeの増減値
+	private static final double ARM_HOLD_MIN_HEIGHT = 0.34; // 位置保持 start height（0.34）
+	private static final double ARM_HOLD_MAX_HEIGHT = 0.56; // 位置保持 max output height（0.56）
 	
 
+
 	
-	// Servo1 위치 변경 추적용 변수
+	// Servo1 location check
 	private double lastServo1Position = 0.0;
 	
-	// 크랩 드라이브 제어용 변수
-	private boolean crabDriveActive = false; // 크랩 드라이브 활성화 상태
-	private double crabDriveTargetHeading = 0.0; // 크랩 드라이브 목표 헤딩
-	private long crabDriveStartTime = 0; // 크랩 드라이브 시작 시간
-	private static final long CRAB_DRIVE_DURATION = 800; // 후진 단계 지속 시간 (ms)
-	private static final double CRAB_DRIVE_POWER = 0.6; // 크랩 드라이브 파워 (60%)
-	private static final double CRAB_DRIVE_BACKWARD_POWER = 0.7; // 후진 파워 (70%) - 조절 가능
-	private static final double CRAB_DRIVE_FORWARD_POWER = 0.4; // 전진 파워 (40%) - 조절 가능
-	private static final double CRAB_DRIVE_DISTANCE = 0.03; // 크랩 드라이브 거리 (3cm = 0.03m)
-	private static final double CRAB_DRIVE_HEADING_STOP_RATIO = 0.4; // 타겟 헤딩 도달 전 40%에서 정지 (오버슈팅 방지) - 미세조정 가능
+	// crab drive variants
+	private boolean crabDriveActive = false; // crab drive activation status
+	private double crabDriveTargetHeading = 0.0; // crab drive target heading
+	private long crabDriveStartTime = 0; // crab drive start time
+	private static final long CRAB_DRIVE_DURATION = 800; // back time (ms)
+	private static final double CRAB_DRIVE_POWER = 0.6; // crab drive power (60%)
+	private static final double CRAB_DRIVE_BACKWARD_POWER = 0.7; // back power (70%) 
+	private static final double CRAB_DRIVE_FORWARD_POWER = 0.4; // forward power (40%)
+	private static final double CRAB_DRIVE_DISTANCE = 0.03; // crab drive distance (3cm = 0.03m)
+	private static final double CRAB_DRIVE_HEADING_STOP_RATIO = 0.4; // prevent overshooting
 	
-	// D-pad 위쪽 버튼 천천히 전진 제어용 변수
-	private static final double DPAD_UP_FORWARD_POWER = 0.15; // D-pad 위쪽 버튼 전진 출력 (15%) - 조정 가능
+	// D-pad up button, slow forward control
+	private static final double DPAD_UP_FORWARD_POWER = 0.15; // D-pad  up forward output (15%)
 	
-	/**
-	 * アーム位置保持制御：암의 자중에 의한 하강을 방지하는 위치 유지 제어（비선형 제어）
-	 * @param currentHeight 현재 암 높이 (normalized potentiometer value)
-	 * @return 위치 유지에 필요한 lift_motor 출력값
-	 */
+	//アーム位置保持制御
 	private double calculateArmHoldPower(double currentHeight) {
-		// 0.34 미만이면 위치 유지 불필요
+		// 0.34 < then no control
 		if (currentHeight < ARM_HOLD_MIN_HEIGHT) {
 			return 0.0;
 		}
 		
-		// 0.56 이상이면 최대 출력
+		// 0.56 > then max output power
 		if (currentHeight >= ARM_HOLD_MAX_HEIGHT) {
 			return armHoldMaxPower;
 		}
 		
-		// 0.34 ~ 0.56 사이에서는 비선형 제어로 출력 계산
+		// 0.34 ~ 0.56 => non linear output
 		double heightRatio = (currentHeight - ARM_HOLD_MIN_HEIGHT) / (ARM_HOLD_MAX_HEIGHT - ARM_HOLD_MIN_HEIGHT);
-		
-		// 비선형 곡선 적용 (0.42 근처에서 더 높은 출력을 위해)
-		// 제곱근 함수를 사용하여 낮은 높이에서도 더 높은 출력 제공
 		double nonLinearRatio = Math.sqrt(heightRatio);
 		
-		// 0.42 근처에서 추가 보정 (0.42는 약 0.36의 heightRatio에 해당)
+		// 0.42 area fine tuning
 		double targetHeight = 0.42;
 		double targetRatio = (targetHeight - ARM_HOLD_MIN_HEIGHT) / (ARM_HOLD_MAX_HEIGHT - ARM_HOLD_MIN_HEIGHT);
 		
 		if (Math.abs(heightRatio - targetRatio) < 0.1) {
-			// 0.42 근처에서는 추가 30% 증가
+			// add 30% output at 0.42 area
 			nonLinearRatio *= 1.3;
 		}
 		
@@ -112,14 +104,8 @@ public class A1debug extends LinearOpMode {
 		return holdPower;
 	}
 	
-	/**
-	 * 2단계 크랩 드라이브 제어: 먼저 후진한 다음 전진하여 좌우 이동
-	 * @param leftStickX gamepad1의 왼쪽 조이스틱 X축 입력 (-1.0 ~ 1.0)
-	 * @param hasNormalDriveInput 일반 드라이브 입력이 있는지 여부
-	 * @return 크랩 드라이브가 활성화되었는지 여부
-	 */
 	private boolean controlCrabDrive(double leftStickX, boolean hasNormalDriveInput) {
-		// 일반 드라이브 입력이 있으면 크랩 드라이브를 즉시 중단
+		// joystick input will cancel crab drive
 		if (hasNormalDriveInput) {
 			if (crabDriveActive) {
 				crabDriveActive = false;
@@ -128,40 +114,39 @@ public class A1debug extends LinearOpMode {
 			return false;
 		}
 		
-		// 데드존 설정 (0.05 이하는 무시)
+		// dead zone
 		if (Math.abs(leftStickX) < 0.05) {
 			if (crabDriveActive) {
-				// 크랩 드라이브 종료
+				// finish crab drive
 				crabDriveActive = false;
 				System.out.println("A1debug - Crab Drive: Deactivated");
 			}
 			return false;
 		}
 		
-		// 크랩 드라이브 활성화
+		// activate crab drive
 		if (!crabDriveActive) {
 			crabDriveActive = true;
-			crabDriveTargetHeading = imuMotorSystem.getYaw(); // 현재 헤딩을 목표로 저장
-			crabDriveStartTime = System.currentTimeMillis(); // 시작 시간 설정
+			crabDriveTargetHeading = imuMotorSystem.getYaw(); // save current heading as target heading
+			crabDriveStartTime = System.currentTimeMillis(); // setup start time
 			System.out.println("A1debug - Crab Drive: Started - Target Heading: " + crabDriveTargetHeading + "° - Will return to this heading in Phase 2");
 		}
 		
-		// 크랩 드라이브 진행 시간 계산
+		// crab drive time calculation
 		long elapsedTime = System.currentTimeMillis() - crabDriveStartTime;
 		
-		// 디버깅을 위한 시간 정보 출력
+		// time infor for debugging
 		System.out.println("A1debug - Crab Drive Debug: elapsedTime=" + elapsedTime + "ms, CRAB_DRIVE_DURATION=" + CRAB_DRIVE_DURATION + "ms");
 		
-		// 헤딩 보정을 위한 차동 제어
+		// heading adjustment
 		double currentHeading = imuMotorSystem.getYaw();
 		double headingError = crabDriveTargetHeading - currentHeading;
 		double correctionPower = Math.max(-0.2, Math.min(0.2, headingError * 0.01));
 		
 		if (elapsedTime < CRAB_DRIVE_DURATION) {
-			// 1단계: 후진 (800ms) - 조이스틱 입력 반전으로 선회 방향 수정
+			// 1단계: back (800ms) 
 			System.out.println("A1debug - Crab Drive: PHASE 1 - BACKWARD FIRST - elapsedTime=" + elapsedTime + "ms");
-			if (leftStickX < 0) { // 왼쪽 입력을 오른쪽으로 처리 (조이스틱 반전)
-				// 왼쪽 모터: 전진, 오른쪽 모터: 정지 (왼쪽 앞으로 전진 - 후진 효과)
+			if (leftStickX < 0) { 
 				if (imuMotorSystem.isLeftMotorConnected()) {
 					imuMotorSystem.getLeftMotor().setPower(CRAB_DRIVE_BACKWARD_POWER + correctionPower);
 				}
@@ -169,8 +154,7 @@ public class A1debug extends LinearOpMode {
 					imuMotorSystem.getRightMotor().setPower(0.0);
 				}
 				System.out.println("A1debug - Crab Drive: Phase 1 - Moving left forward (LEFT input as RIGHT direction) - Left Motor: " + CRAB_DRIVE_BACKWARD_POWER + ", Right Motor: 0.0");
-			} else { // 오른쪽 입력을 왼쪽으로 처리 (조이스틱 반전)
-				// 왼쪽 모터: 정지, 오른쪽 모터: 전진 (오른쪽 앞으로 전진 - 후진 효과)
+			} else { 
 				if (imuMotorSystem.isLeftMotorConnected()) {
 					imuMotorSystem.getLeftMotor().setPower(0.0);
 				}
@@ -179,31 +163,25 @@ public class A1debug extends LinearOpMode {
 				}
 				System.out.println("A1debug - Crab Drive: Phase 1 - Moving right forward (RIGHT input as LEFT direction) - Left Motor: 0.0, Right Motor: " + CRAB_DRIVE_BACKWARD_POWER);
 			}
-		} else if (elapsedTime < CRAB_DRIVE_DURATION + 500) { // 후진 800ms + 전진 500ms
-			// 2단계: 앞으로 전진하면서 원래 헤딩으로 복귀 - heading 보정 강화
+		} else if (elapsedTime < CRAB_DRIVE_DURATION + 500) { 
 			System.out.println("A1debug - Crab Drive: PHASE 2 - FORWARD SECOND - elapsedTime=" + elapsedTime + "ms");
 			double forwardPower = Math.abs(leftStickX) * CRAB_DRIVE_FORWARD_POWER;
 			
-			// 2단계용 heading 정보 업데이트 (기존 변수 재할당)
 			currentHeading = imuMotorSystem.getYaw();
 			headingError = crabDriveTargetHeading - currentHeading;
 			
-			// heading 오차를 정규화 (-180 ~ 180도 범위로)
 			while (headingError > 180) headingError -= 360;
 			while (headingError < -180) headingError += 360;
 			
-			// 2단계용 heading 보정을 위한 차동 제어 (더 강한 보정)
 			correctionPower = Math.max(-0.4, Math.min(0.4, headingError * 0.03));
 		
 		System.out.println("A1debug - Crab Drive: Phase 2 - Target Heading: " + crabDriveTargetHeading + "°, Current: " + currentHeading + "°, Error: " + headingError + "°, Correction: " + correctionPower);
 		
-		// 오버슈팅 방지: 타겟에 도달하기 전 70%에서 정지
+		// prevent overshooting stop at 70%
 		double headingStopThreshold = 2.0 * CRAB_DRIVE_HEADING_STOP_RATIO; // 2도 * 0.7 = 1.4도
 		boolean shouldStopForHeading = Math.abs(headingError) < headingStopThreshold;
 		
-		if (leftStickX < 0) { // 왼쪽 입력을 오른쪽으로 처리 (조이스틱 반전)
-			// 진행 방향 반대로: 좌우 모터 출력 파워 서로 바꿈
-			// 왼쪽 모터: 후진 + 보정, 오른쪽 모터: 후진 - 보정 (기존과 반대)
+		if (leftStickX < 0) { 
 			double leftMotorPower = shouldStopForHeading ? 0.0 : (-forwardPower + correctionPower);
 			double rightMotorPower = shouldStopForHeading ? 0.0 : (-forwardPower - correctionPower);
 			
@@ -219,8 +197,7 @@ public class A1debug extends LinearOpMode {
 			} else {
 				System.out.println("A1debug - Crab Drive: Phase 2 - Moving backward (LEFT input as RIGHT direction) - REVERSED POWER - Left Motor: -" + (forwardPower - correctionPower) + ", Right Motor: -" + (forwardPower + correctionPower));
 			}
-		} else { // 오른쪽 입력을 왼쪽으로 처리 (조이스틱 반전)
-			// heading 보정을 위한 차동 제어: 왼쪽 모터: 후진 + 보정, 오른쪽 모터: 후진 - 보정
+		} else { 
 			double leftMotorPower = shouldStopForHeading ? 0.0 : (-forwardPower + correctionPower);
 			double rightMotorPower = shouldStopForHeading ? 0.0 : (-forwardPower - correctionPower);
 			
@@ -238,12 +215,12 @@ public class A1debug extends LinearOpMode {
 			}
 		}
 		
-		// heading이 목표에 도달했는지 확인 (오버슈팅 방지 적용)
-		if (Math.abs(headingError) < headingStopThreshold) { // 1.4도 이내로 도달 (70%에서 정지)
+		// check heading target reached (prevent overshooting)
+		if (Math.abs(headingError) < headingStopThreshold) { // within 1.4 deg
 			System.out.println("A1debug - Crab Drive: Phase 2 - Target heading reached (with overshoot prevention)! Error: " + headingError + "°, Stop Threshold: " + headingStopThreshold + "°");
 		}
 		} else {
-			// 크랩 드라이브 완료
+			// finish crab drive
 			crabDriveActive = false;
 			System.out.println("A1debug - Crab Drive: Completed - Final Heading: " + imuMotorSystem.getYaw() + "°");
 		}
@@ -303,12 +280,12 @@ public class A1debug extends LinearOpMode {
 			// A1ImuMotorでIMUデータを更新し、ドライブ制御を実行
 			imuMotorSystem.updateImuData();
 			
-			// 일반 드라이브 입력 확인
+			// normal drive input check
 			boolean hasNormalDriveInput = (Math.abs(rightStickY) > 0.05) || (Math.abs(rightStickX) > 0.05) || leftBumper || rightBumper || 
 										 (Math.abs(gamepad2.right_stick_y) > 0.05) || (Math.abs(gamepad2.right_stick_x) > 0.05) || 
 										 gamepad2.left_bumper || gamepad2.right_bumper;
 			
-			// 크랩 드라이브 제어 (gamepad1 왼쪽 조이스틱 X축) - 일반 드라이브 입력이 없을 때만
+			// crab drive control
 			boolean crabDriveInput = controlCrabDrive(leftStickX, hasNormalDriveInput);
 			
 			// 手動入力で自動整向をキャンセル
@@ -320,9 +297,7 @@ public class A1debug extends LinearOpMode {
 			double autoTurnLeftPower = autoTurnControl[0];
 			double autoTurnRightPower = autoTurnControl[1];
 			
-			// 크랩 드라이브가 활성화된 경우 크랩 드라이브 제어 사용
 			if (crabDriveActive && !hasNormalDriveInput) {
-				// 크랩 드라이브는 이미 controlCrabDrive() 메서드에서 모터 제어
 				System.out.println("A1Task - Crab Drive: Active - Skipping normal drive control");
 			}
 			// 自動整向がアクティブな場合は自動整向の制御値を使用、そうでなければ通常のドライブ制御
@@ -350,12 +325,12 @@ public class A1debug extends LinearOpMode {
 				leftPower = rightStickY;	// 左モーター（前進で正転）
 				rightPower = rightStickY;   // 右モーター（前進で正転）
 				
-				// 前進時にtop_motorを 속도に 비례하여 정방향으로 구동
+				// 前進時にtop_motorを drive
 				if (rightStickY < 0) {
 					double topMotorPower = Math.abs(rightStickY) * 1.2; // 속도의 120%로 top_motor 구동 (50% 더 빠르게)
 					System.out.println("A1Task - Gamepad1 Input: " + rightStickY + ", Top motor power: " + topMotorPower);
 					
-					// top_motor 제어 실행
+					// top_motor control
 					if (topSystem.isTopMotorConnected()) {
 						topSystem.moveTop(topMotorPower, false);
 						System.out.println("A1Task - Forward detected, Top motor " + (topMotorPower * 100) + "% power (speed: " + (Math.abs(rightStickY) * 100) + "%)");
@@ -364,7 +339,7 @@ public class A1debug extends LinearOpMode {
 						System.out.println("A1Task - ERROR: Top motor not connected!");
 					}
 				} else {
-					// 후진시에는 top_motor 정지
+					// stop top_motor when back
 					topSystem.moveTop(0.0, false);
 					System.out.println("A1Task - Backward detected, Top motor stopped");
 				}
@@ -375,12 +350,10 @@ public class A1debug extends LinearOpMode {
 				leftPower = gamepad2RightStickY;	// 左モーター（前進で正転）
 				rightPower = gamepad2RightStickY;   // 右モーター（前進で正転）
 				
-				// 前進時にtop_motorを 속도에 비례하여 정방향으로 구동
 				if (gamepad2RightStickY < 0) {
-					double topMotorPower = Math.abs(gamepad2RightStickY) * 1.2; // 속도의 120%로 top_motor 구동 (50% 더 빠르게)
+					double topMotorPower = Math.abs(gamepad2RightStickY) * 1.2; 
 					System.out.println("A1Task - Gamepad2 Input: " + gamepad2RightStickY + ", Top motor power: " + topMotorPower);
 					
-					// top_motor 제어 실행
 					if (topSystem.isTopMotorConnected()) {
 						topSystem.moveTop(topMotorPower, false);
 						System.out.println("A1Task - Gamepad2 Forward detected, Top motor " + (topMotorPower * 100) + "% power (speed: " + (Math.abs(gamepad2RightStickY) * 100) + "%)");
@@ -389,14 +362,11 @@ public class A1debug extends LinearOpMode {
 						System.out.println("A1Task - ERROR: Top motor not connected!");
 					}
 				} else {
-					// 후진시에는 top_motor 정지
 					topSystem.moveTop(0.0, false);
 					System.out.println("A1Task - Gamepad2 Backward detected, Top motor stopped");
 				}
 			} else {
-				// 両方のgamepadの右スティックY軸入力がない 경우：L1ボタン으로 전진
 				if (gamepad2.left_bumper && !gamepad2.right_bumper) {
-					// L1ボタン이 눌린 경우：전진 제어 (이미 L1 버튼에서 top_motor 제어됨)
 					leftPower = -0.3;   // 左モーター（前進で正転）- 30%出力で調整
 					rightPower = -0.3;  // 右モーター（前進で正転）- 30%出力で調整
 					System.out.println("A1Task - L1 Button Forward Control: -0.3 (30% power)");
@@ -430,10 +400,10 @@ public class A1debug extends LinearOpMode {
 					rightPower += 0.5;  // 右回転（R1）- 右モーター正転
 				}
 				
-				// D-pad 위쪽 버튼으로 천천히 전진
+				// D-pad up slow forward
 				if (dpadUp) {
-					leftPower += -DPAD_UP_FORWARD_POWER;   // 전진 (음수값으로 전진)
-					rightPower += -DPAD_UP_FORWARD_POWER;  // 전진 (음수값으로 전진)
+					leftPower += -DPAD_UP_FORWARD_POWER;   // forward
+					rightPower += -DPAD_UP_FORWARD_POWER;  // forward
 					System.out.println("A1Task - D-pad Up: Slow Forward at " + (DPAD_UP_FORWARD_POWER * 100) + "% power");
 				}
 
@@ -495,14 +465,12 @@ public class A1debug extends LinearOpMode {
 			lastShareButton = gamepad1.x;
 			lastOptionsButton = gamepad1.y;
 			
-			// アーム位置保持 최대出力の調整（P1のX/Yボタンで調整）
+			// アーム位置保持 max出力の調整（P1のX/Yボタンで調整）
 			if (gamepad1.x && !lastShareButton) {
-				// Xボタンで保持 최대出力 감소
 				armHoldMaxPower = Math.max(-0.5, armHoldMaxPower - ARM_HOLD_MAX_POWER_INCREMENT);
 				System.out.println("A1Task - Arm Hold Max Power Decreased: " + armHoldMaxPower);
 			}
 			if (gamepad1.y && !lastOptionsButton) {
-				// Yボタンで保持 최대出力 증가
 				armHoldMaxPower = Math.min(0.0, armHoldMaxPower + ARM_HOLD_MAX_POWER_INCREMENT);
 				System.out.println("A1Task - Arm Hold Max Power Increased: " + armHoldMaxPower);
 			}
@@ -511,7 +479,7 @@ public class A1debug extends LinearOpMode {
 			
 
 			
-			// R1ボタンでアーム位置制御 + 리프트 자동 높이 제어 (포텐셔미터 0.57까지)
+			// R1ボタンでアーム位置制御 + lift height control (poten until 0.57)
 			if (gamepad2.right_bumper && (Math.abs(rightStickY) < 0.05 || rightStickY <= 0)) {
 				// 現在のポテンションメーター値を取得
 				double currentArmHeight = potensionSystem.getCurrentHeight();
@@ -522,54 +490,48 @@ public class A1debug extends LinearOpMode {
 				// 比例制御でアームモーターを制御（ゆっくり）
 				double armControlPower = Math.max(-0.3, Math.min(0.3, heightError * 2.0)); // 制限付き比例制御
 				
-				// ポテンションメーターノーマライズの値に応じてarm_motorの出力を調整（전체적으로 20% 감소）
+				// ポテンションメーターノーマライズの値に応じてarm_motorの出力を調整
 				double finalArmPower;
 				if (currentArmHeight >= 0.45) {
-					// ターゲット位置（0.55）に近い場合：50%の出力でしっかり動作（20% 감소 적용）
-					finalArmPower = 0.5 * 0.8; // 50%에서 20% 감소 = 40%
+					// ターゲット位置（0.55）に近い場合：50%の出力でしっかり動作
+					finalArmPower = 0.5 * 0.8; 
 					System.out.println("A1Task - Near target position, using 40% power (20% reduced from 50%)");
 				} else if (currentArmHeight >= 0.35) {
-					// 中間位置の場合：30%の出力（20% 감소 적용）
-					finalArmPower = 0.3 * 0.8; // 30%에서 20% 감소 = 24%
+					// 中間位置の場合：30%の出力
+					finalArmPower = 0.3 * 0.8; 
 					System.out.println("A1Task - Middle position, using 24% power (20% reduced from 30%)");
 				} else {
-					// 低い位置（0.28など）の場合：比例制御（ほぼ停止可能）（20% 감소 적용）
-					finalArmPower = armControlPower * 1.3 * 0.8; // 30%増加 후 20% 감소
+					// 低い位置（0.28など）の場合：比例制御（ほぼ停止可能）
+					finalArmPower = armControlPower * 1.3 * 0.8; 
 					finalArmPower = Math.max(-1.0, Math.min(1.0, finalArmPower)); // 範囲制限
 					System.out.println("A1Task - Low position, using proportional control (20% reduced)");
 				}
 				
 
-				
-				// 리프트 자동 높이 제어 (포텐셔미터 0.57까지)
-				double targetLiftHeight = 0.57; // 목표 리프트 높이
+				double targetLiftHeight = 0.57; // trget lift height
 				double currentLiftHeight = potensionSystem.getCurrentHeight();
 				double liftHeightError = targetLiftHeight - currentLiftHeight;
 				
 				if (currentLiftHeight < targetLiftHeight) {
-					// 목표 높이에 도달하지 않은 경우: 최대 파워로 강력하게 상승
 					double liftUpPower;
 					
 					if (currentLiftHeight < 0.5) {
-						// 0.5 미만에서는 최대 파워로 강제 상승
-						liftUpPower = -1.0; // 100% 파워로 최대 상승
+						liftUpPower = -1.0; // 100% power
 					} else if (currentLiftHeight < 0.55) {
-						// 0.5 ~ 0.55에서는 매우 강한 파워로 상승
-						liftUpPower = -0.95; // 95% 파워로 강력하게 상승
+						// 0.5 ~ 0.55 strong power
+						liftUpPower = -0.95; // 95% power
 					} else {
-						// 0.55 이상에서는 강한 파워로 정밀하게 상승
-						liftUpPower = -0.85; // 85% 파워로 상승
+						liftUpPower = -0.85; // 85% power
 					}
 					
 					liftSystem.moveLift(liftUpPower);
 					System.out.println("A1Task - R1: Lifting to target height " + targetLiftHeight + ", Current: " + currentLiftHeight + ", Power: " + liftUpPower + " (Maximum Power)");
 				} else {
-					// 목표 높이에 도달한 경우: 자중 지탱 파워로 유지
 					liftSystem.moveLift(armHoldPower);
 					System.out.println("A1Task - R1: Target height reached, maintaining with hold power: " + armHoldPower);
 				}
 				
-				// 디버그 정보
+				// debug info
 				System.out.println("A1Task - R1 Button: Arm motor power (+30% increased)");
 				System.out.println("A1Task - Current Arm Height: " + currentArmHeight);
 				System.out.println("A1Task - Target Arm Height: " + r1ArmTargetHeight);
@@ -618,23 +580,19 @@ public class A1debug extends LinearOpMode {
 				}
 			}
 			
-			// ===== 서보모터 제어 정리 =====
-			// Triangle 버튼 제어 제거됨 - top_motor와 servo는 독립적으로 제어
 			
-			// D-pad 제어 (servo1, servo2 동시 제어)
 			servoSystem.controlServosWithDpad(gamepad2.dpad_left, gamepad2.dpad_right, gamepad2.dpad_up, gamepad2.dpad_down);
 		
-			// A/B 버튼 제어
+			// A/B button control
 			if (gamepad2.a) {
-				servoSystem.moveBothServosToMin(); // A: 최소 위치
+				servoSystem.moveBothServosToMin(); // A: min position
 				telemetry.addData("SERVO CONTROL", "A Button - Both Servos to MIN");
 			}
 			if (gamepad2.b) {
-				servoSystem.moveBothServosToMax(); // B: 최대 위치
+				servoSystem.moveBothServosToMax(); // B: max position
 				telemetry.addData("SERVO CONTROL", "B Button - Both Servos to MAX");
 			}
 		
-			// 버튼 매핑 디버깅을 위한 추가 로그
 			if (gamepad2.square) {
 				System.out.println("A1Task - Square button detected: " + gamepad2.square);
 			}
@@ -642,13 +600,13 @@ public class A1debug extends LinearOpMode {
 				System.out.println("A1Task - Circle button detected: " + gamepad2.circle);
 			}
 			
-			// Share/Options 버튼 제어
-			if (gamepad2.back) { // Share 버튼
+			// Share/Options button control
+			if (gamepad2.back) { // Share button
 				servoSystem.setServo1Position(0.25);
 				servoSystem.setServo2Position(0.85);
 				System.out.println("A1Task - Share Button: Servo1(0.25) + Servo2(0.85)");
 				telemetry.addData("SERVO CONTROL", "Share Button - Servo1(0.25) + Servo2(0.85)");
-			} else if (gamepad2.start) { // Options 버튼
+			} else if (gamepad2.start) { // Options button
 				servoSystem.setServo1Position(0.7);
 				servoSystem.setServo2Position(0.5);
 				System.out.println("A1Task - Options Button: Servo1(0.7) + Servo2(0.5)");
@@ -668,15 +626,13 @@ public class A1debug extends LinearOpMode {
 					System.out.println("A1Task - R2 only: Top motor reverse rotation with power: " + gamepad2.right_trigger);
 				}
 				
-				// R2 트리거로 top_motor 구동 시에는 servo 제어하지 않음
-				// top_motor와 servo는 독립적으로 제어되어야 함
 				System.out.println("A1debug - R2 trigger: Top Motor control ONLY - NO SERVO CONTROL");
 			} else {
 				// R2が押されていない場合：top_motor即座に停止
 				if (Math.abs(rightStickY) < 0.05 || rightStickY >= 0) {
 					topSystem.moveTopWithM1Combo(0.0);
 				}
-				// servo 제어가 제거되었으므로 타이머 리셋 불필요
+
 			}
 			
 			// デバッグ情報
@@ -692,28 +648,27 @@ public class A1debug extends LinearOpMode {
 			
 
 			
-			// === ARM MOTOR 제어 로직 ===
-			// L2 트리거 제어
+			// === ARM MOTOR control logic ===
+			// L2 trigger control
 			if (gamepad2.left_trigger > 0.05) {
 				if (armSystem.isArmMotorConnected()) {
-					armSystem.getArmMotor().setPower(1.0); // 100% 출력
+					armSystem.getArmMotor().setPower(1.0); // 100% ouput
 					System.out.println("A1Task - L2 Trigger: Arm motor 100% power");
 				}
 			}
-			// R1 버튼 제어 - 30% 출력 증가
+			// R1 button control - increase output by 30%
 			else if (gamepad2.right_bumper && (Math.abs(rightStickY) < 0.05 || rightStickY <= 0)) {
-				// 현재의 포텐셔미터 값에 따른 비례 제어
 				double currentArmHeight = potensionSystem.getCurrentHeight();
 				double heightError = r1ArmTargetHeight - currentArmHeight;
 				double armControlPower = Math.max(-0.3, Math.min(0.3, heightError * 2.0));
 				
 				double finalArmPower;
 				if (currentArmHeight >= 0.45) {
-					finalArmPower = 0.4 * 1.3; // 40% → 52% (30% 증가)
+					finalArmPower = 0.4 * 1.3; // 40% → 52% (30% increase)
 				} else if (currentArmHeight >= 0.35) {
-					finalArmPower = 0.24 * 1.3; // 24% → 31.2% (30% 증가)
+					finalArmPower = 0.24 * 1.3; // 24% → 31.2% (30% increase)
 				} else {
-					finalArmPower = armControlPower * 1.3 * 0.8 * 1.3; // 비례 제어도 30% 증가
+					finalArmPower = armControlPower * 1.3 * 0.8 * 1.3; 
 				}
 				finalArmPower = Math.max(-1.0, Math.min(1.0, finalArmPower));
 				
@@ -722,19 +677,19 @@ public class A1debug extends LinearOpMode {
 				}
 				System.out.println("A1Task - R1 Button: Arm motor power (+30% increased)");
 			}
-			// 후진 제어
+			// backward control
 			else if (rightStickY > 0 || gamepad2.right_stick_y > 0) {
 				if (armSystem.isArmMotorConnected()) {
-					armSystem.getArmMotor().setPower(0.4); // 40% 출력
+					armSystem.getArmMotor().setPower(0.4); // 40% output
 				}
 				System.out.println("A1Task - Backward: Arm motor 40% power");
 			}
-			// arm_motor 정지
+			// arm_motor stop
 			else if (armSystem.isArmMotorConnected()) {
 				armSystem.getArmMotor().setPower(0.0);
 			}
 			
-			// arm_motor 상태 정보
+			// arm_motor status info
 			System.out.println("A1Task - Arm Motor Connected: " + armSystem.isArmMotorConnected());
 			System.out.println("A1Task - Arm Motor Power: " + armSystem.getArmMotorPower());
 			
@@ -758,28 +713,21 @@ public class A1debug extends LinearOpMode {
 			lastShareButton = gamepad1.left_bumper;
 			lastOptionsButton = gamepad1.right_bumper;
 			
-			// gamepad2のL1ボタン制御（lift_motor + top_motor + 아주 약한 전진）
+			// gamepad2のL1ボタン制御（lift_motor + top_motor + slow forard）
 			if (gamepad2.left_bumper && !gamepad2.right_bumper) {
-				// L1ボタン이 눌린 경우：lift_motor 제어（gamepad1 joystick과 무관）
+				// L1ボタン pressed：lift_motor control（gamepad1 joystick not related）
 				double l1LiftPower = potensionSystem.getAdjustedLiftPower(-0.800);
 				liftSystem.moveLift(l1LiftPower);
-				
-				// L1 버튼으로 top_motor 구동 시에는 servo 제어하지 않음
-				// top_motor와 servo는 독립적으로 제어되어야 함
+
 				System.out.println("A1debug - L1 button pressed: Lift + Top Motor + Forward ONLY - NO SERVO CONTROL");
-				
-				// top_motorを動かす（M1コンボ機能）- gamepad1 joystick과 무관
-				
-				// top_motorを動かす（M1コンボ機能）- gamepad1 joystick과 무관
 				topSystem.moveTopM1Combo();
 				
-				// L1 버튼으로 약한 전진 추가 (30% 파워)
-				double l1ForwardPower = 0.3; // 약한 전진 파워
+				double l1ForwardPower = 0.3; 
 				if (imuMotorSystem.isLeftMotorConnected()) {
-					imuMotorSystem.getLeftMotor().setPower(-l1ForwardPower); // 전진 (음수)
+					imuMotorSystem.getLeftMotor().setPower(-l1ForwardPower); 
 				}
 				if (imuMotorSystem.isRightMotorConnected()) {
-					imuMotorSystem.getRightMotor().setPower(-l1ForwardPower); // 전진 (음수)
+					imuMotorSystem.getRightMotor().setPower(-l1ForwardPower); 
 				}
 				
 				// デバッグ情報
@@ -791,10 +739,9 @@ public class A1debug extends LinearOpMode {
 				
 				telemetry.addData("LIFT+TOP+FORWARD COMBO", "L1 Button - Lift: -0.800 (Adjusted: " + l1LiftPower + "), Top: -1.0, Forward: " + l1ForwardPower);
 			}
-			// gamepad2のSquareボタン制御（top_motor만 제어）
+
 			else if (gamepad2.square) {
-				// Squareボタン이 눌린 경우：top_motor만 제어
-				topSystem.moveTopM1Combo(); // 100% 정방향
+				topSystem.moveTopM1Combo(); 
 				
 				// デバッグ情報
 				System.out.println("A1Task - Square Button Pressed (Top Motor Control)");
@@ -804,21 +751,18 @@ public class A1debug extends LinearOpMode {
 				
 				telemetry.addData("TOP MOTOR CONTROL", "Square Button - Top: 1.0 (100%)");
 			}
-			// gamepad2のCircleボタン制御（top_motor만 제어 - 역방향, 서보 제어 완전 차단）
+
 			else if (gamepad2.circle) {
-				// Circleボタン이 눌린 경우：top_motor만 제어 (역방향)
-				topSystem.moveTopM1ComboReverse(); // 100% 역방향
-				
-				// Circle 버튼이 눌렸을 때 서보 제어 완전 차단
-				// 어떤 다른 로직에서도 서보를 제어하지 않도록 명시적으로 차단
+
+				topSystem.moveTopM1ComboReverse(); 
 				System.out.println("A1debug - Circle Button: BLOCKING ALL SERVO CONTROL");
 				
-				// デバッ그情報
+				// debug情報
 				System.out.println("=== CIRCLE BUTTON DEBUG ===");
 				System.out.println("A1debug - Circle Button Pressed - Starting Top Motor Reverse Control ONLY");
 				System.out.println("A1debug - Before moveTopM1ComboReverse() - Top Motor Power: " + topSystem.getTopMotorPower());
 				
-				topSystem.moveTopM1ComboReverse(); // 100% 역방향
+				topSystem.moveTopM1ComboReverse(); // 100% backward
 				
 				System.out.println("A1debug - After moveTopM1ComboReverse() - Top Motor Power: " + topSystem.getTopMotorPower());
 				System.out.println("A1debug - Top Motor Connected: " + topSystem.isTopMotorConnected());
@@ -830,13 +774,12 @@ public class A1debug extends LinearOpMode {
 			} else if (!gamepad2.right_bumper) {
 				// L1ボタンが押されていない場合：通常の制御（段階的制限を適用）
 				// R2ボタンが押されている場合は通常制御をスキップ
-				
-				// gamepad2의 left joystick Y 입력이 있는 경우：일반 제어
+
 				if (Math.abs(gamepad2.left_stick_y) > 0.1) {
 					liftSystem.moveLift(adjustedLiftPower);
 					System.out.println("A1Task - Normal Lift Control: " + adjustedLiftPower);
 				} else {
-					// gamepad2의 left joystick Y 입력이 없는 경우：암 위치 유지 제어
+
 					double holdPower = calculateArmHoldPower(currentHeight);
 					liftSystem.moveLift(holdPower);
 					System.out.println("A1Task - Arm Position Hold Control: Height=" + currentHeight + ", HoldPower=" + holdPower);
@@ -860,7 +803,7 @@ public class A1debug extends LinearOpMode {
 			telemetry.addData("Left Bumper", leftBumper ? "PRESSED" : "Released");
 			telemetry.addData("Right Bumper", rightBumper ? "PRESSED" : "Released");
 			
-			// 크랩 드라이브 상태 표시
+			// crab drive status
 			telemetry.addData("=== CRAB DRIVE STATUS ===", "");
 			telemetry.addData("Crab Drive Active", crabDriveActive ? "YES" : "NO");
 			telemetry.addData("Normal Drive Input", hasNormalDriveInput ? "YES (Priority)" : "NO");
@@ -875,9 +818,9 @@ public class A1debug extends LinearOpMode {
 					telemetry.addData("Phase", "1 - BACKWARD FIRST (800ms)");
 					telemetry.addData("Backward Power", "%.1f%%", CRAB_DRIVE_BACKWARD_POWER * 100);
 					if (leftStickX > 0) {
-						telemetry.addData("Backward Direction", "LEFT backward (오른쪽 이동을 위해)");
+						telemetry.addData("Backward Direction", "LEFT backward");
 					} else {
-						telemetry.addData("Backward Direction", "RIGHT backward (왼쪽 이동을 위해)");
+						telemetry.addData("Backward Direction", "RIGHT backward");
 					}
 				} else if (elapsedTime < CRAB_DRIVE_DURATION + 500) {
 					telemetry.addData("Phase", "2 - FORWARD SECOND (500ms)");
@@ -885,14 +828,14 @@ public class A1debug extends LinearOpMode {
 					telemetry.addData("Forward Power", "%.1f%%", forwardPower * 100);
 					telemetry.addData("Forward Purpose", "Return to original position with heading correction");
 					
-					// Heading 보정 상태 상세 표시
+					// Heading 
 					double currentHeading = imuMotorSystem.getYaw();
 					double headingError = crabDriveTargetHeading - currentHeading;
 					while (headingError > 180) headingError -= 360;
 					while (headingError < -180) headingError += 360;
 					
-					// 오버슈팅 방지 정보 추가
-					double headingStopThreshold = 2.0 * CRAB_DRIVE_HEADING_STOP_RATIO; // 1.4도
+					// overshooting
+					double headingStopThreshold = 2.0 * CRAB_DRIVE_HEADING_STOP_RATIO; // 1.4 deg
 					telemetry.addData("Overshoot Prevention", "%.1f%% (%.2f°)", CRAB_DRIVE_HEADING_STOP_RATIO * 100, headingStopThreshold);
 					
 					telemetry.addData("Heading Correction", "%.2f° → %.2f° (Error: %.2f°)", currentHeading, crabDriveTargetHeading, headingError);
@@ -907,9 +850,9 @@ public class A1debug extends LinearOpMode {
 					telemetry.addData("Phase", "Completed");
 				}
 				if (leftStickX > 0) {
-					telemetry.addData("Direction", "RIGHT (오른쪽으로 이동)");
+					telemetry.addData("Direction", "RIGHT");
 				} else {
-					telemetry.addData("Direction", "LEFT (왼쪽으로 이동)");
+					telemetry.addData("Direction", "LEFT");
 				}
 			}
 			
@@ -1069,7 +1012,7 @@ public class A1debug extends LinearOpMode {
 			telemetry.addData("Update Rate", "20 Hz (50ms)");
 			telemetry.addData("Status", "Running");
 			
-			// Servo1 위치 변경 추적
+			// Servo1 
 			double currentServo1Position = servoSystem.getServo1Position();
 			if (Math.abs(currentServo1Position - lastServo1Position) > 0.01) {
 				telemetry.addData("*** SERVO1 POSITION CHANGE ***", "%.3f -> %.3f", lastServo1Position, currentServo1Position);
@@ -1079,11 +1022,11 @@ public class A1debug extends LinearOpMode {
 				telemetry.addData("Servo1 Position Stable", "%.3f", currentServo1Position);
 			}
 			
-			// M2 버튼 상태 표시
+			// M2 button
 			telemetry.addData("M2 Button Status", gamepad2.square ? "PRESSED" : "Released");
 			telemetry.addData("Circle Button Status", gamepad2.circle ? "PRESSED - Top Motor Reverse" : "Released");
 			
-			// 현재 servo 제어 상태 표시
+			// current seveo control status
 			if (gamepad2.square) {
 				telemetry.addData("*** SQUARE ACTIVE ***", "Top Motor Forward");
 			} else if (gamepad2.circle) {
@@ -1095,11 +1038,11 @@ public class A1debug extends LinearOpMode {
 			// === SERVO1 POSITION TRACKING ===
 			telemetry.addData("=== SERVO1 POSITION TRACKING ===", "");
 			
-			// 현재 servo1 위치
+			// current servo1 position
 			telemetry.addData("Current Servo1 Position", "%.3f", currentServo1Position);
 			telemetry.addData("Last Servo1 Position", "%.3f", lastServo1Position);
 			
-			// 위치 변경 감지
+			// position changed
 			if (Math.abs(currentServo1Position - lastServo1Position) > 0.01) {
 				telemetry.addData("*** POSITION CHANGED ***", "YES");
 				telemetry.addData("Change Amount", "%.3f", currentServo1Position - lastServo1Position);
@@ -1107,7 +1050,7 @@ public class A1debug extends LinearOpMode {
 				telemetry.addData("*** POSITION CHANGED ***", "NO");
 			}
 			
-			// 버튼 상태 상세 정보
+			// button status
 			telemetry.addData("Gamepad2 Square (Top Forward)", gamepad2.square ? "PRESSED" : "Released");
 			telemetry.addData("Gamepad2 Circle (Top Reverse)", gamepad2.circle ? "PRESSED" : "Released");
 			telemetry.addData("Gamepad2 A", gamepad2.a ? "PRESSED" : "Released");
@@ -1119,7 +1062,7 @@ public class A1debug extends LinearOpMode {
 			telemetry.addData("Gamepad2 R2 Trigger", "%.3f", gamepad2.right_trigger);
 			telemetry.addData("Gamepad2 L1 Bumper", gamepad2.left_bumper ? "PRESSED" : "Released");
 			
-			// 버튼 상태 디버깅
+			// button status debrgging
 			telemetry.addData("=== BUTTON DEBUG ===", "");
 			telemetry.addData("Square (Top Forward) Raw Value", gamepad2.square);
 			telemetry.addData("Circle (Top Reverse) Raw Value", gamepad2.circle);
@@ -1130,7 +1073,7 @@ public class A1debug extends LinearOpMode {
 			telemetry.addData("Both Square and Circle Pressed", (gamepad2.square && gamepad2.circle) ? "YES" : "NO");
 			telemetry.addData("Neither Square nor Circle Pressed", (!gamepad2.square && !gamepad2.circle) ? "YES" : "NO");
 			
-			// 버튼 매핑 확인
+			// button mapping
 			telemetry.addData("=== BUTTON MAPPING CHECK ===", "");
 			if (gamepad2.square) telemetry.addData("Square (Top Forward) Detected", "YES");
 			if (gamepad2.circle) telemetry.addData("Circle (Top Reverse) Detected", "YES");
@@ -1139,7 +1082,7 @@ public class A1debug extends LinearOpMode {
 			if (gamepad2.a) telemetry.addData("A Button Detected", "YES");
 			if (gamepad2.b) telemetry.addData("B Button Detected", "YES");
 			
-			// 제어 우선순위 상태
+			// control priority
 			if (gamepad2.square) {
 				telemetry.addData("*** SQUARE PRIORITY ***", "ACTIVE - Top Motor Forward");
 				telemetry.addData("Square Override Status", "Top motor forward 100% power");
@@ -1154,7 +1097,7 @@ public class A1debug extends LinearOpMode {
 				telemetry.addData("L1 Servo Control", "Enabled");
 			}
 			
-			// 예상 servo1 위치 (수정된 버전)
+			// expected servo1 position
 			if (gamepad2.back) {
 				telemetry.addData("Expected Servo1 Position", "0.250 (Share Button)");
 			} else if (gamepad2.start) {
@@ -1175,7 +1118,6 @@ public class A1debug extends LinearOpMode {
 				telemetry.addData("Expected Servo1 Position", "No change expected");
 			}
 			
-			// 위치 불일치 감지 (Circle 버튼은 이제 servo 제어 안함)
 			telemetry.addData("Position Match", "OK - Circle button no longer controls servos");
 			
 			// === CIRCLE BUTTON SERVO DEBUG ===
