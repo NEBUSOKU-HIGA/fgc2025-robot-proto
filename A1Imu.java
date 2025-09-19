@@ -11,7 +11,7 @@ public class A1Imu {
 	// IMU センサー
 	private IMU imu;
 	
-	// SHARE/BACKでヘディング記憶
+	// SHARE/BACKでヘディング記憶 memorize
 	private boolean prevSharePressed = false;
 	private double storedHeadingDeg = 0.0;
 	private boolean hasStoredHeading = false;
