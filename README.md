@@ -1,6 +1,6 @@
 # FGC 2025 — Robot Prototype 🌱🤖
 
-This repository is our very first prototype for the **First Global Challenge 2025**.  
+This repository is our very first prototype for the **First Global Challenge 2025**..  
 We are **Team NeBusoku**, a group of coding beginners who came together during a summer camp.  
 Through late nights, trial and error, and plenty of teamwork, we created these first lines of code.  
 
