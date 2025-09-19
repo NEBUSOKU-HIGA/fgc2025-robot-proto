@@ -72,7 +72,6 @@ public class A1Top2 {
 		}
 	}
 	
-	// R2용 반대 방향 M1コンボ用トップモーター制御
 	public void moveTopM1ComboReverse() {
 		if (topMotor != null) {
 			// コンボ時は強制的に一定速度で反対方向に回す
