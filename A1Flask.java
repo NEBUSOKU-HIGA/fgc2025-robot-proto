@@ -9,7 +9,7 @@ import java.util.concurrent.Executors;
 
 public class A1Flask {
 
-	// Flaskサーバーの設定
+	// Flaskサーバーの設定 setup
 	private static final String FLASK_SERVER_URL = "http://192.168.43.48:5000";
 	private static final String JOYSTICK1_ENDPOINT = "/joystick1";
 	private static final String JOYSTICK2_ENDPOINT = "/joystick2";
