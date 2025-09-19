@@ -10,7 +10,7 @@ public class DistanceSensorSubsystem {
 	private static final double CRITICAL_DISTANCE_CM = 15.0; // 15cmで危険
 
 	public DistanceSensorSubsystem(HardwareMap hw) {
-		// 距離センサーの初期化
+		// 距離センサーの初期化 initialization
 		distanceSensor = hw.get(DistanceSensor.class, "distanceSensor");
 	}
 
