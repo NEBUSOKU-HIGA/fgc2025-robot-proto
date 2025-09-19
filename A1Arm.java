@@ -51,7 +51,7 @@ public class A1Arm {
 		return armMotor != null;
 	}
 	
-	// アームモーター 객체를取得（A1Task에서 직접 제어용）
+	// アームモーター 取得
 	public DcMotorEx getArmMotor() {
 		return armMotor;
 	}
