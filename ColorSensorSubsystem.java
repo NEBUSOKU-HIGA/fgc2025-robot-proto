@@ -10,7 +10,7 @@ public class ColorSensorSubsystem {
 		// カラーセンサーの初期化
 		colorSensor = hw.get(ColorSensor.class, "colorSensor");
 		
-		// LEDを有効化
+		// LEDを有効化 activate
 		if (colorSensor != null) {
 			colorSensor.enableLed(true);
 		}
