@@ -5,7 +5,7 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 
 public class A1Potension {
 	
-	// ポテンショメーター制御用変数
+	// ポテンショメーター制御用変数 variants
 	private static final double MIN_HEIGHT = 0.326;
 	private static final double MAX_HEIGHT = 0.7;
 	private static final double TARGET_HEIGHT = 0.78;
