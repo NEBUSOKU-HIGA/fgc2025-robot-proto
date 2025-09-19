@@ -20,7 +20,7 @@ public class A1Drive {
 			leftMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 			leftMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
 			leftMotor.setDirection(DcMotor.Direction.FORWARD);
-			leftMotor.setPower(0.0); // 確実に停止
+			leftMotor.setPower(0.0); // 確実に停止 stop
 		}
 		if (rightMotor != null) {
 			rightMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
