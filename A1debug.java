@@ -178,7 +178,7 @@ public class A1debug extends LinearOpMode {
 		System.out.println("A1debug - Crab Drive: Phase 2 - Target Heading: " + crabDriveTargetHeading + "°, Current: " + currentHeading + "°, Error: " + headingError + "°, Correction: " + correctionPower);
 		
 		// prevent overshooting stop at 70%
-		double headingStopThreshold = 2.0 * CRAB_DRIVE_HEADING_STOP_RATIO; // 2도 * 0.7 = 1.4도
+		double headingStopThreshold = 2.0 * CRAB_DRIVE_HEADING_STOP_RATIO; 
 		boolean shouldStopForHeading = Math.abs(headingError) < headingStopThreshold;
 		
 		if (leftStickX < 0) { 
