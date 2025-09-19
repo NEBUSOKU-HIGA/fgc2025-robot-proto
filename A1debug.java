@@ -21,7 +21,7 @@ public class A1debug extends LinearOpMode {
 
 	// A1システムのインスタンス
 	private A1ImuMotor imuMotorSystem;
-	private A1Flask flaskSystem = null; // Flaskはオプション
+	private A1Flask flaskSystem = null; // Flaskはオプション optional..
 	private A1Arm armSystem;
 	private A1Lift liftSystem;
 	private A1Potension potensionSystem;
@@ -379,7 +379,7 @@ public class A1debug extends LinearOpMode {
 				}
 			}
 
-							// 左右回転制御（右スティックX軸、gamepad1とgamepad2の両方に対応）
+			// 左右回転制御（右スティックX軸、gamepad1とgamepad2の両方に対応）
 			if (Math.abs(rightStickX) >= 0.05) {
 				leftPower += -rightStickX;  // 左モーター（右回転で正転）- 符号反転
 				rightPower -= -rightStickX; // 右モーター（右回転で逆転）- 符号反転
