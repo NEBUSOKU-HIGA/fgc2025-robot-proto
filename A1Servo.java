@@ -10,9 +10,9 @@ public class A1Servo {
 	private Servo servo2;
 	
 	// サーボの位置制限
-	private static final double MIN_POSITION = 0.250; // M1 servo1 위치
-	private static final double MAX_POSITION = 0.850; // M1 servo2 위치
-	private static final double SERVO1_MAX_POSITION = 0.700; // M2 servo1 위치
+	private static final double MIN_POSITION = 0.250; // M1 servo1
+	private static final double MAX_POSITION = 0.850; // M1 servo2
+	private static final double SERVO1_MAX_POSITION = 0.700; // M2 servo1
 	private static final double POSITION_INCREMENT = 0.05;
 	
 	public A1Servo(HardwareMap hardwareMap) {
